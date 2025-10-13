@@ -1,0 +1,557 @@
+@startuml 08-seq-wallet-initialization
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Wallet Initialization & Key Generation\n**First-Time Setup with Mnemonic Backup**
+
+actor "User" as User
+participant "Onboarding\nUI" as OnboardingUI
+participant "Wallet\nInitializer" as WalletInit
+participant "Key\nManager" as KeyMgr
+participant "HD Wallet\n(BIP32/39/44)" as HDWallet
+participant "DID\nManager" as DIDMgr
+participant "Secure\nStorage\n(Keystore)" as SecureStorage
+participant "Database\nManager" as DBMgr
+participant "Credential\nStore" as CredStore
+
+== 1. User Completes Onboarding ==
+
+User -> OnboardingUI: Open app (first time)
+activate OnboardingUI
+
+OnboardingUI -> User: Welcome screen
+User -> OnboardingUI: Continue
+
+OnboardingUI -> User: Privacy policy & Terms
+User -> OnboardingUI: Accept terms
+
+OnboardingUI -> User: Create PIN screen
+note left of User
+  **PIN Requirements:**
+  - 6 digits minimum
+  - Not sequential (123456)
+  - Not repeated (111111)
+end note
+
+User -> OnboardingUI: Enter PIN (e.g., 759342)
+OnboardingUI -> OnboardingUI: Validate PIN strength
+
+alt Weak PIN
+  OnboardingUI -> User: PIN too weak, try again
+  User -> OnboardingUI: Enter stronger PIN
+end
+
+OnboardingUI -> User: Confirm PIN
+User -> OnboardingUI: Re-enter PIN
+
+OnboardingUI -> OnboardingUI: Verify PINs match
+
+alt PINs don't match
+  OnboardingUI -> User: PINs don't match
+  User -> OnboardingUI: Re-enter confirmation
+end
+
+OnboardingUI -> User: Enable biometric?
+User -> OnboardingUI: Yes / No
+
+alt Biometric enabled
+  OnboardingUI -> OnboardingUI: Request biometric enrollment
+  User -> OnboardingUI: Authenticate with Face/Fingerprint
+  OnboardingUI -> OnboardingUI: Store biometric preference
+end
+
+OnboardingUI -> WalletInit: initializeWallet(pin)
+activate WalletInit
+
+== 2. Generate Mnemonic (BIP39) ==
+
+WalletInit -> HDWallet: generateMnemonic()
+activate HDWallet
+
+HDWallet -> HDWallet: Generate 256-bit entropy
+note right of HDWallet
+  **Entropy Generation:**
+  - Use cryptographically secure random
+  - 256 bits = 32 bytes
+  - Provides 24-word mnemonic
+  
+  Entropy example (hex):
+  8f3c7e4d9a2b1c5e6f7a8b9c0d1e2f3a
+  4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e
+end note
+
+HDWallet -> HDWallet: Calculate checksum (SHA-256)
+HDWallet -> HDWallet: Append checksum to entropy
+HDWallet -> HDWallet: Split into 11-bit segments (24 segments)
+HDWallet -> HDWallet: Map each segment to BIP39 wordlist
+
+HDWallet --> WalletInit: 24-word mnemonic
+deactivate HDWallet
+
+note right of HDWallet
+  **Example Mnemonic (24 words):**
+  1. abandon    13. measure
+  2. ability    14. melody
+  3. able       15. member
+  4. about      16. memory
+  5. above      17. mental
+  6. absent     18. mention
+  7. absorb     19. menu
+  8. abstract   20. mercy
+  9. absurd     21. merge
+  10. abuse     22. merit
+  11. access    23. merry
+  12. accident  24. method
+  
+  CRITICAL: User must backup securely!
+end note
+
+== 3. Display Mnemonic to User (Backup) ==
+
+WalletInit -> OnboardingUI: displayMnemonic(words)
+deactivate WalletInit
+
+OnboardingUI -> User: ⚠️ BACKUP YOUR RECOVERY PHRASE\n\nWrite down these 24 words\nin correct order
+
+OnboardingUI -> User: Display mnemonic:\n1. abandon\n2. ability\n...\n24. method
+
+note left of User
+  **Security Instructions:**
+  ✓ Write on paper (not digital)
+  ✓ Store in safe place
+  ✓ Never share with anyone
+  ✓ Never take screenshot
+  ✗ Don't store in cloud
+  ✗ Don't send via email/chat
+end note
+
+OnboardingUI -> User: "I've written it down" checkbox
+User -> User: Write mnemonic on paper
+User -> OnboardingUI: Check "I've written it down"
+
+OnboardingUI -> User: Warning: Cannot recover without this!
+OnboardingUI -> User: Confirm you understand
+User -> OnboardingUI: Confirm
+
+== 4. Mnemonic Confirmation (Quiz) ==
+
+OnboardingUI -> User: Confirm your recovery phrase
+OnboardingUI -> User: Enter word #3: ____
+OnboardingUI -> User: Enter word #12: ____
+OnboardingUI -> User: Enter word #24: ____
+
+note left of User
+  **Confirmation Quiz:**
+  Randomly ask for 3-4 words
+  to ensure user wrote it down
+end note
+
+User -> OnboardingUI: Input: able
+User -> OnboardingUI: Input: accident
+User -> OnboardingUI: Input: method
+
+OnboardingUI -> OnboardingUI: Verify words correct
+
+alt Incorrect words
+  OnboardingUI -> User: Incorrect, please check your backup
+  OnboardingUI -> User: Show mnemonic again
+  User -> OnboardingUI: Re-enter words
+end
+
+OnboardingUI -> OnboardingUI: Confirmation successful ✓
+
+== 5. Generate Seed from Mnemonic ==
+
+OnboardingUI -> WalletInit: proceedWithMnemonic(mnemonic, pin)
+activate WalletInit
+
+WalletInit -> HDWallet: generateSeed(mnemonic, passphrase)
+activate HDWallet
+
+note right of HDWallet
+  **Seed Generation (BIP39):**
+  - Input: Mnemonic + optional passphrase
+  - PBKDF2-HMAC-SHA512
+  - Iterations: 2048
+  - Output: 512-bit seed (64 bytes)
+  
+  seed = PBKDF2(
+    password = mnemonic,
+    salt = "mnemonic" + passphrase,
+    iterations = 2048,
+    hash = SHA512
+  )
+end note
+
+HDWallet -> HDWallet: Apply PBKDF2-HMAC-SHA512
+HDWallet -> HDWallet: 2048 iterations
+HDWallet --> WalletInit: 512-bit seed
+deactivate HDWallet
+
+== 6. Encrypt & Store Seed ==
+
+WalletInit -> WalletInit: Derive encryption key from PIN
+
+note right of WalletInit
+  **PIN-based Key Derivation:**
+  - Algorithm: Argon2id
+  - Memory: 64 MB
+  - Iterations: 3
+  - Parallelism: 4
+  - Salt: random 16 bytes
+  
+  encryption_key = Argon2id(
+    password = PIN,
+    salt = random_salt,
+    memory = 64MB,
+    iterations = 3,
+    parallelism = 4,
+    output = 32 bytes
+  )
+end note
+
+WalletInit -> WalletInit: Generate random salt
+WalletInit -> WalletInit: Apply Argon2id to PIN
+
+WalletInit -> WalletInit: Encrypt seed with AES-256-GCM
+note right of WalletInit
+  **Seed Encryption:**
+  - Algorithm: AES-256-GCM
+  - Key: derived from PIN
+  - IV: random 12 bytes
+  - Tag: 16 bytes (authentication)
+  
+  encrypted_seed = AES256_GCM_Encrypt(
+    plaintext = seed,
+    key = pin_derived_key,
+    iv = random_iv
+  )
+end note
+
+WalletInit -> SecureStorage: storeSeed(encrypted_seed, salt, iv)
+activate SecureStorage
+
+SecureStorage -> SecureStorage: Store in hardware Keystore
+note right of SecureStorage
+  **Secure Storage:**
+  iOS: Keychain with kSecAttrAccessible
+  Android: Android Keystore System
+  
+  - Hardware-backed if available
+  - Encrypted at rest
+  - Protected by device lock
+end note
+
+SecureStorage --> WalletInit: Seed stored securely
+deactivate SecureStorage
+
+== 7. Derive Master Key (BIP32) ==
+
+WalletInit -> HDWallet: deriveMasterKey(seed)
+activate HDWallet
+
+HDWallet -> HDWallet: HMAC-SHA512(key="Bitcoin seed", data=seed)
+HDWallet -> HDWallet: Split result:\n- Left 256 bits = master private key\n- Right 256 bits = master chain code
+
+note right of HDWallet
+  **BIP32 Master Key:**
+  I = HMAC-SHA512(Key = "Bitcoin seed", Data = seed)
+  - I_L (left 256 bits) = master private key
+  - I_R (right 256 bits) = chain code
+  
+  Master Key Path: m
+end note
+
+HDWallet --> WalletInit: Master key + chain code
+deactivate HDWallet
+
+== 8. Derive First Child Keys ==
+
+WalletInit -> HDWallet: deriveChildKey(path: "m/44'/0'/0'/0/0")
+activate HDWallet
+
+note right of HDWallet
+  **BIP44 Derivation Path:**
+  m / 44' / 0' / 0' / 0 / 0
+  │   │     │    │    │   └─ Index (first key)
+  │   │     │    │    └───── Change (external)
+  │   │     │    └────────── Account (first)
+  │   │     └─────────────── Coin type (0=Bitcoin, 60=Ethereum)
+  │   └───────────────────── Purpose (44=BIP44)
+  └───────────────────────── Master
+  
+  ' indicates hardened derivation (more secure)
+end note
+
+HDWallet -> HDWallet: Hardened derivation: m/44'
+HDWallet -> HDWallet: Hardened derivation: m/44'/0'
+HDWallet -> HDWallet: Hardened derivation: m/44'/0'/0'
+HDWallet -> HDWallet: Normal derivation: m/44'/0'/0'/0
+HDWallet -> HDWallet: Normal derivation: m/44'/0'/0'/0/0
+
+HDWallet -> HDWallet: For each level:\nchild_key = HMAC-SHA512(parent_chaincode, parent_key || index)
+
+HDWallet --> WalletInit: Child private key (32 bytes)
+deactivate HDWallet
+
+== 9. Generate Ed25519 Key Pair ==
+
+WalletInit -> KeyMgr: generateKeyPair(Ed25519, child_key)
+activate KeyMgr
+
+note right of KeyMgr
+  **Ed25519 Key Generation:**
+  - Curve: Curve25519 (EdDSA)
+  - Private key: 32 bytes
+  - Public key: 32 bytes
+  - Used for: Signing, DID keys
+end note
+
+KeyMgr -> KeyMgr: Generate Ed25519 key pair\nfrom child key
+KeyMgr -> KeyMgr: Generate key ID (uuid)
+
+KeyMgr -> SecureStorage: storePrivateKey(keyId, privateKey)
+activate SecureStorage
+SecureStorage -> SecureStorage: Store in Keystore\nwith access control
+SecureStorage --> KeyMgr: Key stored
+deactivate SecureStorage
+
+KeyMgr --> WalletInit: publicKey, keyId
+deactivate KeyMgr
+
+== 10. Create First DID (did:key) ==
+
+WalletInit -> DIDMgr: createDID(method: "key", publicKey)
+activate DIDMgr
+
+note right of DIDMgr
+  **did:key Method:**
+  - Instant creation (no registration)
+  - Self-resolving (no ledger lookup)
+  - Format: did:key:<multibase-encoded-key>
+  
+  For Ed25519:
+  1. Prefix with multicodec (0xed01)
+  2. Encode with multibase (base58btc = 'z')
+  3. Result: did:key:z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP
+end note
+
+DIDMgr -> DIDMgr: Prefix with multicodec (Ed25519: 0xed01)
+DIDMgr -> DIDMgr: Encode with multibase (base58btc)
+DIDMgr -> DIDMgr: Create did:key:<encoded>
+
+DIDMgr -> DIDMgr: Build DID document
+note right of DIDMgr
+  **DID Document (did:key):**
+  {
+    "id": "did:key:z6Mkf...",
+    "verificationMethod": [{
+      "id": "did:key:z6Mkf...#z6Mkf...",
+      "type": "Ed25519VerificationKey2020",
+      "controller": "did:key:z6Mkf...",
+      "publicKeyMultibase": "z6Mkf..."
+    }],
+    "authentication": ["did:key:z6Mkf...#z6Mkf..."],
+    "assertionMethod": ["did:key:z6Mkf...#z6Mkf..."],
+    "keyAgreement": [{
+      "id": "did:key:z6Mkf...#z6LSb...",
+      "type": "X25519KeyAgreementKey2020",
+      "controller": "did:key:z6Mkf...",
+      "publicKeyMultibase": "z6LSb..."
+    }]
+  }
+end note
+
+DIDMgr -> DBMgr: storeDID(did, didDocument, keyRef)
+activate DBMgr
+DBMgr -> DBMgr: Insert into DIDs table
+DBMgr --> DIDMgr: DID stored
+deactivate DBMgr
+
+DIDMgr -> DIDMgr: Set as default DID
+DIDMgr --> WalletInit: DID created (did:key:z6Mkf...)
+deactivate DIDMgr
+
+== 11. Generate Encryption Keys (X25519) ==
+
+WalletInit -> KeyMgr: generateEncryptionKey(X25519)
+activate KeyMgr
+
+note right of KeyMgr
+  **X25519 Key Agreement:**
+  - Curve: Curve25519 (ECDH)
+  - Used for: DIDComm encryption
+  - Key agreement protocol
+end note
+
+KeyMgr -> KeyMgr: Generate X25519 key pair
+KeyMgr -> SecureStorage: storePrivateKey(keyId, privateKey)
+activate SecureStorage
+SecureStorage --> KeyMgr: Stored
+deactivate SecureStorage
+
+KeyMgr --> WalletInit: Encryption key created
+deactivate KeyMgr
+
+== 12. Initialize Database ==
+
+WalletInit -> DBMgr: initializeDatabase()
+activate DBMgr
+
+DBMgr -> DBMgr: Check database exists
+
+alt Database doesn't exist
+  DBMgr -> DBMgr: Create SQLite database file
+end
+
+DBMgr -> DBMgr: Run migrations
+note right of DBMgr
+  **Database Tables:**
+  - DIDs (did, document, keys, is_default)
+  - Credentials (id, type, issuer, data, metadata)
+  - Connections (id, their_did, my_did, state)
+  - Messages (id, type, from, to, data)
+  - ProofRequests (id, request, response, status)
+  - Settings (key, value)
+end note
+
+DBMgr -> DBMgr: CREATE TABLE DIDs
+DBMgr -> DBMgr: CREATE TABLE Credentials
+DBMgr -> DBMgr: CREATE TABLE Connections
+DBMgr -> DBMgr: CREATE TABLE Messages
+DBMgr -> DBMgr: CREATE TABLE ProofRequests
+DBMgr -> DBMgr: CREATE TABLE Settings
+
+DBMgr -> DBMgr: Create indexes for performance
+DBMgr -> DBMgr: Initialize empty stores
+
+DBMgr -> DBMgr: Store wallet metadata
+note right of DBMgr
+  **Wallet Metadata:**
+  - wallet_id: uuid
+  - created_at: timestamp
+  - version: "1.0.0"
+  - initialized: true
+end note
+
+DBMgr --> WalletInit: Database initialized
+deactivate DBMgr
+
+== 13. Generate Master Encryption Key ==
+
+WalletInit -> KeyMgr: generateMasterEncryptionKey()
+activate KeyMgr
+
+KeyMgr -> KeyMgr: Derive key from seed
+KeyMgr -> KeyMgr: Generate AES-256 key
+
+KeyMgr -> SecureStorage: storeMasterKey(key)
+activate SecureStorage
+SecureStorage -> SecureStorage: Store with hardware backing
+note right of SecureStorage
+  **Master Encryption Key:**
+  Used for:
+  - Database encryption (SQLCipher)
+  - Field-level encryption
+  - Backup encryption
+end note
+SecureStorage --> KeyMgr: Stored
+deactivate SecureStorage
+
+KeyMgr --> WalletInit: Master key created
+deactivate KeyMgr
+
+== 14. Create Self-Attested Credential (Optional) ==
+
+WalletInit -> CredStore: createSelfAttestedCredential(did)
+activate CredStore
+
+note right of CredStore
+  **Self-Attested Credential:**
+  First credential in wallet
+  Contains wallet info
+  Signed by wallet DID
+end note
+
+CredStore -> CredStore: Build credential JSON
+note right of CredStore
+  {
+    "@context": ["https://www.w3.org/2018/credentials/v1"],
+    "type": ["VerifiableCredential", "WalletCredential"],
+    "issuer": "did:key:z6Mkf...",
+    "issuanceDate": "2024-01-15T12:00:00Z",
+    "credentialSubject": {
+      "id": "did:key:z6Mkf...",
+      "walletName": "My Sphereon Wallet",
+      "createdDate": "2024-01-15"
+    }
+  }
+end note
+
+CredStore -> KeyMgr: signCredential(credential, did)
+activate KeyMgr
+KeyMgr -> KeyMgr: Sign with DID private key
+KeyMgr --> CredStore: Signed credential (JWT)
+deactivate KeyMgr
+
+CredStore -> CredStore: Store in database
+CredStore --> WalletInit: First credential created
+deactivate CredStore
+
+== 15. Complete Initialization ==
+
+WalletInit -> WalletInit: Set wallet state = "initialized"
+WalletInit -> WalletInit: Store initialization timestamp
+WalletInit -> WalletInit: Clear mnemonic from memory
+note right of WalletInit
+  **Security:**
+  Mnemonic never stored in app!
+  Only encrypted seed stored.
+  User must keep physical backup.
+end note
+
+WalletInit --> OnboardingUI: Initialization complete
+deactivate WalletInit
+
+OnboardingUI -> User: ✓ Wallet Created Successfully!
+OnboardingUI -> User: Your recovery phrase is your only backup
+OnboardingUI -> User: Continue to wallet
+
+== 16. Navigate to Home ==
+
+alt Show tutorial
+  OnboardingUI -> User: Quick tutorial
+  OnboardingUI -> User: - Receive credentials\n- Present proofs\n- Manage connections
+  User -> OnboardingUI: Got it
+end
+
+OnboardingUI -> OnboardingUI: Navigate to HomeScreen
+deactivate OnboardingUI
+
+User -> User: Wallet ready to use!
+
+note over User, CredStore
+  **Initialization Complete!**
+  
+  ✓ Mnemonic generated & backed up by user
+  ✓ Seed derived & encrypted with PIN
+  ✓ Master keys derived (BIP32/44)
+  ✓ First DID created (did:key)
+  ✓ Encryption keys generated
+  ✓ Database initialized
+  ✓ Wallet ready for credentials
+  
+  **User now has:**
+  - Secure wallet with recovery option
+  - Default DID for credentials
+  - All cryptographic keys
+  - Empty credential store (ready to receive)
+  
+  **Next steps:**
+  - Receive first credential
+  - Connect with issuers/verifiers
+  - Start using SSI features
+end note
+
+@enduml

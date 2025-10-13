@@ -1,0 +1,79 @@
+@startuml Sphereon Wallet - Key Management & Cryptography
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: Cryptography & Key Management System\n[Complete Cryptographic Operations and Key Lifecycle]
+
+Container_Boundary(kms, "Key Management System") {
+    
+    Component(key_manager, "Key Manager", "Core KMS Controller", "Central key lifecycle: generate, import, export, delete, sign, verify, encrypt, decrypt, key agreement")
+    
+    Container_Boundary(key_generation, "Key Generation System") {
+        Component(key_generator, "Key Generator", "Key Pair Generator", "Generate key pairs: Ed25519, Secp256k1, Secp256r1 (P-256), X25519, RSA-2048/4096")
+        
+        Component(hd_wallet, "HD Wallet (BIP32/39/44)", "Hierarchical Deterministic Wallet", "Derive keys from mnemonic: BIP39 mnemonic generation, BIP32 key derivation, BIP44 multi-account hierarchy")
+        
+        Component(mnemonic_manager, "Mnemonic Manager", "Seed Phrase Manager", "Manage mnemonic seed phrases: store encrypted, verify checksum, backup/restore")
+    }
+    
+    Container_Boundary(crypto_ops, "Cryptographic Operations") {
+        Component(signing_engine, "Signing Engine", "Digital Signatures", "Sign and verify: Ed25519, Secp256k1 (ES256K), P-256 (ES256), RSA. JWT signing/verification")
+        
+        Component(encryption_engine, "Encryption Engine", "Data Encryption", "Encrypt/decrypt data: AES-256-GCM, ChaCha20-Poly1305, Key wrapping (AES-KW)")
+        
+        Component(key_agreement_engine, "Key Agreement Engine", "ECDH Key Exchange", "X25519 key agreement, DIDComm shared secret derivation, HKDF key derivation")
+        
+        Component(hash_engine, "Hash Engine", "Cryptographic Hashing", "Compute hashes: SHA-256, SHA-512, BLAKE2b, Content addressing with multibase")
+    }
+    
+    Container_Boundary(key_storage, "Secure Key Storage") {
+        Component(ios_keychain, "iOS Keychain", "iOS Secure Storage", "iOS Keychain Services with Secure Enclave, access control, biometric protection")
+        
+        Component(android_keystore, "Android Keystore", "Android Secure Storage", "Android Keystore System with StrongBox, hardware-backed keys, biometric protection")
+        
+        Component(encrypted_storage, "Encrypted Storage", "Database Encryption", "Encrypted key storage in database with master key from Keystore, key rotation support")
+    }
+}
+
+System_Ext(secure_enclave, "Secure Enclave (iOS)", "Hardware security module")
+System_Ext(strongbox, "StrongBox (Android)", "Hardware security module")
+System_Ext(database, "Encrypted Database", "SQLCipher database")
+
+Rel(key_manager, key_generator, "Generates keys")
+Rel(key_manager, hd_wallet, "Derives keys")
+Rel(key_manager, signing_engine, "Signs data")
+Rel(key_manager, encryption_engine, "Encrypts data")
+Rel(key_manager, key_agreement_engine, "Key agreement")
+Rel(key_manager, ios_keychain, "Stores keys (iOS)")
+Rel(key_manager, android_keystore, "Stores keys (Android)")
+Rel(key_manager, encrypted_storage, "Stores keys (database)")
+
+Rel(key_generator, ios_keychain, "Stores generated keys")
+Rel(key_generator, android_keystore, "Stores generated keys")
+
+Rel(hd_wallet, mnemonic_manager, "Gets seed")
+Rel(hd_wallet, ios_keychain, "Stores derived keys")
+
+Rel(mnemonic_manager, ios_keychain, "Stores mnemonic")
+Rel(mnemonic_manager, android_keystore, "Stores mnemonic")
+
+Rel(signing_engine, ios_keychain, "Retrieves keys")
+Rel(signing_engine, android_keystore, "Retrieves keys")
+Rel(signing_engine, hash_engine, "Hashes data")
+
+Rel(encryption_engine, ios_keychain, "Retrieves keys")
+Rel(encryption_engine, android_keystore, "Retrieves keys")
+
+Rel(key_agreement_engine, ios_keychain, "Retrieves keys")
+Rel(key_agreement_engine, android_keystore, "Retrieves keys")
+Rel(key_agreement_engine, hash_engine, "HKDF")
+
+Rel(ios_keychain, secure_enclave, "Hardware-backed keys")
+Rel(android_keystore, strongbox, "Hardware-backed keys")
+Rel(encrypted_storage, database, "Stores encrypted keys")
+
+SHOW_LEGEND()
+
+@enduml

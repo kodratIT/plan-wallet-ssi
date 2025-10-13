@@ -1,0 +1,58 @@
+@startuml BC Wallet - Container Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Container Diagram for BC Wallet Mobile System
+
+Person(user, "BC Resident", "User managing digital credentials")
+
+System_Boundary(bc_wallet_system, "BC Wallet Mobile System") {
+    Container(mobile_app, "Mobile Application", "React Native, TypeScript", "User interface for managing credentials, proofs, and connections")
+    
+    Container(bifold_framework, "Bifold Framework", "@aries-bifold packages", "Reusable SSI wallet components and UI elements")
+    
+    Container(credo_agent, "Credo Agent", "Aries Framework JavaScript", "Core SSI agent managing wallet, credentials, proofs, and DIDComm")
+    
+    Container(indy_sdk, "Indy SDK", "Native Module (JNI/Swift)", "Hyperledger Indy operations: wallet, crypto, ledger")
+    
+    Container(aries_askar, "Aries Askar", "Native Module", "Secure encrypted storage for credentials and keys")
+    
+    Container(secure_storage, "Secure Storage", "Keychain (iOS) / Keystore (Android)", "Platform-specific secure key storage")
+    
+    ContainerDb(local_db, "Local Database", "SQLite / Askar Store", "Encrypted local storage for credentials and connections")
+}
+
+System_Ext(bcsc, "BC Services Card", "OAuth2 Identity Provider")
+System_Ext(ias, "IAS Core API", "REST API")
+System_Ext(mediator, "Mediator Service", "DIDComm Router")
+System_Ext(indy_ledger, "Indy Ledger", "Blockchain")
+System_Ext(push_services, "Push Services", "FCM/APNs")
+
+Rel(user, mobile_app, "Uses", "Touch/Gestures")
+
+Rel(mobile_app, bifold_framework, "Uses components from")
+Rel(mobile_app, credo_agent, "Calls", "JavaScript API")
+Rel(mobile_app, bcsc, "Authenticates", "OAuth2/OIDC, HTTPS")
+Rel(mobile_app, ias, "Requests verification", "REST API, HTTPS")
+Rel(mobile_app, secure_storage, "Stores tokens", "Native API")
+
+Rel(bifold_framework, credo_agent, "Uses")
+
+Rel(credo_agent, indy_sdk, "Uses", "Native binding")
+Rel(credo_agent, aries_askar, "Uses", "Native binding")
+Rel(credo_agent, mediator, "Sends/receives messages", "DIDComm, HTTPS/WSS")
+Rel(credo_agent, local_db, "Reads/writes", "SQL/KV")
+
+Rel(indy_sdk, indy_ledger, "Queries", "Indy protocol, HTTPS")
+Rel(indy_sdk, aries_askar, "Uses for storage")
+
+Rel(aries_askar, local_db, "Manages")
+Rel(aries_askar, secure_storage, "Stores master key")
+
+Rel(mediator, push_services, "Triggers", "Push protocol")
+Rel(push_services, mobile_app, "Notifies", "Push notification")
+
+SHOW_LEGEND()
+
+@enduml

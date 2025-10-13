@@ -1,0 +1,174 @@
+@startuml Sphereon SSI Wallet - Deployment Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Deployment Diagram - Development & Production Environment
+
+Deployment_Node(developer_machine, "Developer Machine", "macOS / Windows / Linux") {
+    Deployment_Node(dev_tools, "Development Tools") {
+        Container(vscode, "VS Code", "Code Editor", "TypeScript, React Native\nESLint, Prettier")
+        Container(node_env, "Node.js", "v18/20 LTS", "npm packages\nExpo CLI, EAS CLI")
+        Container(git_client, "Git", "Version Control", "Source code management")
+    }
+    
+    Deployment_Node(mobile_emulators, "Mobile Emulators") {
+        Container(android_emu, "Android Emulator", "API 33/34", "From Android Studio\nPixel 7 AVD")
+        Container(ios_sim, "iOS Simulator", "iOS 16/17", "From Xcode\niPhone 14/15 simulator")
+    }
+    
+    Deployment_Node(metro_bundler, "Metro Bundler") {
+        Container(metro, "Metro", "JavaScript Bundler", "Bundles JS/TS code\nHot reloading\nSource maps")
+    }
+}
+
+Deployment_Node(expo_services, "Expo Services", "Cloud Platform") {
+    Deployment_Node(expo_infra, "Expo Infrastructure") {
+        Container(expo_go_backend, "Expo Go Backend", "Cloud Service", "Development server\nOTA updates endpoint")
+        Container(eas_build, "EAS Build", "Cloud Build Service", "iOS/Android builds\nBuild artifacts")
+        Container(eas_update, "EAS Update", "OTA Updates", "JavaScript updates\nWithout app store")
+        Container(expo_notifications, "Expo Push", "Push Notifications", "FCM/APNs proxy")
+    }
+}
+
+Deployment_Node(mobile_device_dev, "Mobile Device (Development)", "iOS / Android") {
+    Deployment_Node(expo_go_app, "Expo Go App") {
+        Container(wallet_dev, "Wallet App (Dev)", "React Native", "Running via Expo Go\nHot reload enabled\nDev tools accessible")
+        ContainerDb(local_storage_dev, "Local Storage", "AsyncStorage", "Development data\nTest credentials")
+        Container(secure_store_dev, "Secure Store", "Keychain/Keystore", "Dev keys & secrets")
+    }
+}
+
+Deployment_Node(mobile_device_prod, "Mobile Device (Production)", "iOS / Android") {
+    Deployment_Node(native_runtime, "Native Runtime") {
+        Container(wallet_prod, "Wallet App (Prod)", "Native Binary", "Standalone app\nNo Expo Go required\nOptimized bundle")
+        ContainerDb(local_storage_prod, "Local Storage", "AsyncStorage", "User data\nCredentials\nConnections")
+        Container(secure_store_prod, "Secure Store", "Keychain/Keystore", "Private keys\nPINs\nBiometric data")
+    }
+}
+
+Deployment_Node(app_stores, "App Distribution", "Official Stores") {
+    Container(app_store, "Apple App Store", "iOS Distribution", "Review process\niOS .ipa binary")
+    Container(play_store, "Google Play Store", "Android Distribution", "Review process\nAndroid .aab bundle")
+}
+
+Deployment_Node(ci_cd, "CI/CD Pipeline", "GitHub Actions / GitLab CI") {
+    Container(ci_pipeline, "Build Pipeline", "Automated", "Lint, test, build\nEAS Build trigger\nVersion tagging")
+}
+
+System_Ext(ssi_services, "SSI Services", "External APIs\nIssuers, Verifiers\nDID Resolvers")
+
+' Development flow
+Rel(vscode, node_env, "Uses", "npm scripts")
+Rel(node_env, metro, "Starts", "npm start")
+Rel(metro, expo_go_backend, "Connects to", "WebSocket")
+Rel(metro, wallet_dev, "Serves bundle", "HTTP")
+Rel(expo_go_app, expo_go_backend, "Loads from", "HTTPS")
+Rel(wallet_dev, local_storage_dev, "Stores", "Data")
+Rel(wallet_dev, secure_store_dev, "Stores", "Secrets")
+Rel(android_emu, metro, "Loads bundle", "HTTP")
+Rel(ios_sim, metro, "Loads bundle", "HTTP")
+
+' Production flow
+Rel(git_client, ci_pipeline, "Push code", "Git push")
+Rel(ci_pipeline, eas_build, "Triggers", "eas build")
+Rel(eas_build, app_store, "Uploads", "iOS binary")
+Rel(eas_build, play_store, "Uploads", "Android binary")
+Rel(app_store, native_runtime, "Install", "User download")
+Rel(play_store, native_runtime, "Install", "User download")
+Rel(wallet_prod, eas_update, "Checks updates", "HTTPS")
+Rel(wallet_prod, local_storage_prod, "Stores", "Data")
+Rel(wallet_prod, secure_store_prod, "Stores", "Secrets")
+Rel(wallet_prod, expo_notifications, "Receives", "Push notifications")
+
+' External APIs
+Rel(wallet_dev, ssi_services, "API calls", "HTTPS")
+Rel(wallet_prod, ssi_services, "API calls", "HTTPS")
+
+note right of developer_machine
+  **Sprint 0 Setup:**
+  1. Install Node.js 18/20 LTS
+  2. Install Android Studio (for Android)
+  3. Install Xcode (for iOS, macOS only)
+  4. Install VS Code with extensions
+  5. Install Expo CLI: npm install -g expo-cli
+  6. Install EAS CLI: npm install -g eas-cli
+  7. Setup Android emulator (API 34)
+  8. Setup iOS simulator (iOS 17)
+  
+  **Alur Development:**
+  • Edit kode di VS Code
+  • Save file → Hot reload di app
+  • Test di emulator/device
+  • Commit & push ke Git
+end note
+
+note left of expo_services
+  **Layanan Expo:**
+  
+  **Tier Gratis:**
+  • Expo Go untuk development
+  • OTA updates (terbatas)
+  
+  **Tier Berbayar (Production):**
+  • EAS Build: Cloud builds
+  • EAS Submit: Submit ke app store
+  • EAS Update: Unlimited OTA updates
+  
+  **Alternatif:**
+  Bisa eject ke bare React Native
+  dan build lokal jika diperlukan
+end note
+
+note bottom of mobile_device_dev
+  **Mode Development:**
+  • Fast refresh / Hot reload
+  • Dev menu (goyangkan device)
+  • Remote debugging
+  • Element inspector
+  • Monitor performa
+  • Network inspector
+  
+  **Testing:**
+  • Expo Go app (testing cepat)
+  • Development build (fitur lengkap)
+  • Emulator/Simulator (iOS/Android)
+  • Physical device (testing real-world)
+end note
+
+note top of mobile_device_prod
+  **Mode Production:**
+  • Bundle teroptimasi
+  • Kode minified & obfuscated
+  • ProGuard enabled (Android)
+  • Release signing keys
+  • Dev tools tidak bisa diakses
+  • Crash reporting aktif
+  • Analytics terintegrasi
+  
+  **Distribusi:**
+  • App Store (iOS)
+  • Google Play (Android)
+  • Distribusi enterprise (opsional)
+  • TestFlight (beta iOS)
+  • Internal testing (beta Android)
+end note
+
+note bottom of ci_cd
+  **Pipeline CI/CD (Future):**
+  Tidak wajib untuk Sprint 0,
+  tapi rencanakan untuk sprint mendatang:
+  
+  1. Push ke main branch
+  2. Run linting (ESLint)
+  3. Run tests (Jest)
+  4. Run type checking (TypeScript)
+  5. Trigger EAS Build
+  6. Run E2E tests (Detox)
+  7. Deploy ke TestFlight/Internal Testing
+  8. (Manual) Rilis production
+  
+  **Sprint 0: Setup Git repo saja**
+end note
+
+@enduml

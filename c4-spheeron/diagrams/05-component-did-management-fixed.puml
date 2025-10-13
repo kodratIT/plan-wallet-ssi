@@ -1,0 +1,82 @@
+@startuml Sphereon Wallet - DID Management Subsystem
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: DID Management Subsystem\n[Complete DID Lifecycle Management]
+
+Container_Boundary(did_subsystem, "DID Management Subsystem") {
+    
+    Component(did_manager, "DID Manager", "Core Orchestrator", "Central DID lifecycle management: createDID, importDID, exportDID, deleteDID, listDIDs, setDefaultDID. Manages keys, resolution, registration, and persistence.")
+    
+    Container_Boundary(resolver_boundary, "DID Resolution System") {
+        Component(did_resolver, "DID Resolver", "Universal Resolver", "Multi-method DID resolution: parse DID, route to method resolver, execute resolution, cache result. TTL 5 min, max 100 documents.")
+        
+        Component(resolution_cache, "Resolution Cache", "LRU Cache", "DID document caching with O(1) lookups, background refresh, TTL-based eviction.")
+        
+        Component(universal_resolver_client, "Universal Resolver Client", "HTTP Client", "Fallback resolver at https://dev.uniresolver.io supporting 70+ DID methods. Rate limited 10 req/sec.")
+    }
+    
+    Container_Boundary(method_providers, "DID Method Providers") {
+        Component(did_key_provider, "did:key Provider", "Method Implementation", "Key-based DIDs. Ed25519, Secp256k1, X25519 support. No network lookup, instant resolution. Not updateable, no service endpoints.")
+        
+        Component(did_jwk_provider, "did:jwk Provider", "Method Implementation", "JWK-based DIDs. ES256, ES384, ES256K, EdDSA support. Decode base64url, construct DID doc. Smaller than did:key.")
+        
+        Component(did_web_provider, "did:web Provider", "Method Implementation", "Web-based DIDs. Domain ownership required. Fetch from /.well-known/did.json. HTTPS required, TLS validation.")
+        
+        Component(did_ion_provider, "did:ion Provider", "Method Implementation", "ION Bitcoin DIDs. Sidetree protocol, IPFS storage. 10-60 min creation, ~$0.01 cost. Long-form DID for instant resolution.")
+        
+        Component(did_ethr_provider, "did:ethr Provider", "Method Implementation", "Ethereum DIDs. ERC-1056 registry. Query events, construct DID doc. Gas costs, 15s-1min updates. L2 support.")
+        
+        Component(did_ebsi_provider, "did:ebsi Provider", "Method Implementation", "EBSI EU DIDs. Permissioned blockchain. P-256 keys. EUDI Wallet compliant. Trusted registries integration.")
+    }
+    
+    Component(did_registrar, "DID Registrar", "Registration Manager", "DID registration on ledgers: create, update, deactivate. Transaction management, status tracking, retry logic.")
+    
+    Component(did_document_manager, "DID Document Manager", "Document Builder", "DID document construction: verificationMethod, authentication, assertionMethod, keyAgreement, services. Schema validation.")
+    
+    Component(did_storage, "DID Storage", "Database DAO", "Persistent DID storage with encrypted keys at rest. AES-256-GCM. Queries: findByDid, findAll, findDefault, findByMethod.")
+}
+
+System_Ext(kms, "Key Management System", "Secure key storage and crypto operations")
+System_Ext(universal_resolver, "Universal Resolver", "Fallback DID resolution")
+System_Ext(ion_nodes, "ION Network", "Bitcoin-anchored Sidetree")
+System_Ext(ethereum_network, "Ethereum Network", "Mainnet / L2")
+System_Ext(ebsi_network, "EBSI Network", "EU Blockchain")
+System_Ext(web_servers, "Web Servers", "HTTPS hosts")
+
+Rel(did_manager, did_resolver, "Resolves DIDs")
+Rel(did_manager, did_registrar, "Registers new DIDs")
+Rel(did_manager, did_document_manager, "Builds/validates documents")
+Rel(did_manager, did_storage, "Persists DIDs")
+Rel(did_manager, kms, "Generates/stores keys")
+
+Rel(did_resolver, resolution_cache, "Checks cache")
+Rel(did_resolver, did_key_provider, "Resolves did:key")
+Rel(did_resolver, did_jwk_provider, "Resolves did:jwk")
+Rel(did_resolver, did_web_provider, "Resolves did:web")
+Rel(did_resolver, did_ion_provider, "Resolves did:ion")
+Rel(did_resolver, did_ethr_provider, "Resolves did:ethr")
+Rel(did_resolver, did_ebsi_provider, "Resolves did:ebsi")
+Rel(did_resolver, universal_resolver_client, "Fallback resolution")
+
+Rel(resolution_cache, did_storage, "Persistent cache")
+
+Rel(universal_resolver_client, universal_resolver, "Universal resolution")
+
+Rel(did_web_provider, web_servers, "Fetch .well-known/did.json")
+Rel(did_ion_provider, ion_nodes, "Query Sidetree operations")
+Rel(did_ethr_provider, ethereum_network, "Query smart contract")
+Rel(did_ebsi_provider, ebsi_network, "Query DID Registry API")
+
+Rel(did_registrar, did_ion_provider, "Submit ION operations")
+Rel(did_registrar, did_ethr_provider, "Submit Ethereum tx")
+Rel(did_registrar, did_ebsi_provider, "Submit EBSI operation")
+Rel(did_registrar, kms, "Sign transactions")
+
+Rel(did_document_manager, did_storage, "Store documents")
+
+SHOW_LEGEND()
+
+@enduml

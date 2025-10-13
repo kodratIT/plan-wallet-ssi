@@ -1,0 +1,57 @@
+@startuml Sphereon Wallet - Native Platform Integration
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: Native Platform Integration\n[React Native Bridges and Platform-Specific Features]
+
+Container_Boundary(native_integration, "Native Platform Integration") {
+    
+    Container_Boundary(qr_scanner, "QR Code Scanner Module") {
+        Component(qr_bridge, "QR Scanner Bridge", "React Native Module", "QR code scanning bridge: scan from camera, scan from image, permission handling. Returns QR data and type")
+        
+        Component(ios_qr_scanner, "iOS QR Scanner", "Native iOS (Swift)", "iOS camera and QR detection: AVFoundation camera, Vision framework for barcode detection, present scanner UI")
+        
+        Component(android_qr_scanner, "Android QR Scanner", "Native Android (Kotlin)", "Android camera and ML Kit: CameraX for camera, ML Kit for barcode scanning, scanner activity")
+    }
+    
+    Component(biometric_bridge, "Biometric Bridge", "React Native Module", "Biometric authentication bridge: check availability, get supported types (Face/Touch/Fingerprint), authenticate with reason/fallback")
+    
+    Component(secure_storage_bridge, "Secure Storage Bridge", "React Native Module", "Platform secure storage bridge: setItem/getItem/removeItem/clear. iOS Keychain with Secure Enclave, Android Keystore with AES-256-GCM encryption")
+    
+    Component(push_notification_bridge, "Push Notification Bridge", "React Native Module", "Push notification handling: Firebase Cloud Messaging, request permission, get FCM token, handle foreground/background/opened messages")
+    
+    Component(background_task_bridge, "Background Task Bridge", "React Native Module", "Background job scheduling: react-native-background-fetch, 15min intervals, sync messages/check revocations/expirations. iOS BackgroundFetch, Android WorkManager")
+    
+    Component(deep_linking_bridge, "Deep Linking Bridge", "React Native Module", "Deep linking and universal links: custom scheme (sphereon://), universal links (https://wallet.sphereon.com), handle credential offers/proof requests/connections")
+    
+    Component(file_system_bridge, "File System Bridge", "React Native Module", "Secure file operations: export/import credentials, create/restore backups, share files. Use react-native-fs for file operations")
+}
+
+System_Ext(ios_native, "iOS Native APIs", "AVFoundation, Vision, LocalAuthentication, Keychain")
+System_Ext(android_native, "Android Native APIs", "CameraX, ML Kit, BiometricPrompt, Keystore")
+System_Ext(fcm, "Firebase Cloud Messaging", "Push notifications")
+System_Ext(apns, "Apple Push Notification Service", "Push notifications")
+
+Rel(qr_bridge, ios_qr_scanner, "Calls native (iOS)")
+Rel(qr_bridge, android_qr_scanner, "Calls native (Android)")
+
+Rel(ios_qr_scanner, ios_native, "Camera & Vision")
+Rel(android_qr_scanner, android_native, "Camera & ML Kit")
+
+Rel(biometric_bridge, ios_native, "Face ID/Touch ID")
+Rel(biometric_bridge, android_native, "Fingerprint/Face")
+
+Rel(secure_storage_bridge, ios_native, "Keychain")
+Rel(secure_storage_bridge, android_native, "Keystore")
+
+Rel(push_notification_bridge, fcm, "Push (Android)")
+Rel(push_notification_bridge, apns, "Push (iOS)")
+
+Rel(background_task_bridge, ios_native, "Background fetch")
+Rel(background_task_bridge, android_native, "WorkManager")
+
+SHOW_LEGEND()
+
+@enduml

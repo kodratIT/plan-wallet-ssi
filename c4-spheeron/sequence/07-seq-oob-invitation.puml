@@ -1,0 +1,557 @@
+@startuml 07-seq-oob-invitation
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Out-of-Band (OOB) Invitation Flow\n**Multi-Protocol Invitation Routing (RFC 0434)**
+
+actor "User" as User
+participant "Mobile\nWallet UI" as UI
+participant "QR\nScanner" as QRScanner
+participant "OOB\nParser" as OOBParser
+participant "Protocol\nRouter" as Router
+participant "DIDComm\nHandler" as DIDComm
+participant "OID4VCI\nClient" as OID4VCI
+participant "OID4VP\nClient" as OID4VP
+database "Connection\nStore" as ConnStore
+
+== 1. Scan Out-of-Band Invitation ==
+
+User -> UI: Scan QR code
+activate UI
+
+UI -> QRScanner: startScanning()
+activate QRScanner
+
+QRScanner -> QRScanner: Detect QR code
+QRScanner --> UI: QR data detected
+deactivate QRScanner
+
+note right of QRScanner
+  **OOB Invitation URL Format:**
+  
+  Example 1: DIDComm Connection
+  https://wallet.example.com?_oob=eyJ...
+  
+  Example 2: OID4VCI Credential Offer
+  openid-credential-offer://?
+  credential_offer_uri=https://issuer.com/offer/xyz
+  
+  Example 3: OID4VP Presentation Request
+  openid-vp://?request_uri=https://verifier.com/request/abc
+  
+  Example 4: Multi-Protocol OOB
+  https://wallet.example.com?_oob=<base64_json>
+  
+  OOB can contain multiple service options
+end note
+
+== 2. Parse OOB Invitation ==
+
+UI -> OOBParser: parseInvitation(qrData)
+activate OOBParser
+
+OOBParser -> OOBParser: Detect invitation format
+
+alt OpenID4VCI URL (credential offer)
+  
+  OOBParser -> OOBParser: Extract openid-credential-offer://
+  
+  note right of OOBParser
+    **Detected: OpenID4VCI Credential Offer**
+    
+    Format: openid-credential-offer://?
+    credential_offer_uri=https://issuer.com/offer/xyz
+    
+    Direct routing to OID4VCI flow
+  end note
+  
+  OOBParser -> OOBParser: Extract credential_offer_uri
+  OOBParser --> UI: CredentialOfferInvitation
+  
+  UI -> Router: routeInvitation(type: CREDENTIAL_OFFER)
+  activate Router
+  
+  Router -> OID4VCI: handleCredentialOffer(offerUri)
+  activate OID4VCI
+  
+  note right of OID4VCI
+    **Routing Decision:**
+    Type = Credential Offer
+    Protocol = OpenID4VCI
+    
+    → Proceed to SD-01/SD-02 flow
+    (OpenID4VCI Pre-Auth or Auth Code)
+  end note
+  
+  OID4VCI -> OID4VCI: Continue with SD-01 or SD-02
+  
+  note over OID4VCI
+    See SD-01: OpenID4VCI Pre-Authorized Code Flow
+    or SD-02: OpenID4VCI Authorization Code Flow
+    
+    for complete credential issuance flow
+  end note
+  
+  deactivate OID4VCI
+  deactivate Router
+  
+else OpenID4VP URL (presentation request)
+  
+  OOBParser -> OOBParser: Extract openid-vp://
+  
+  note right of OOBParser
+    **Detected: OpenID4VP Presentation Request**
+    
+    Format: openid-vp://?
+    request_uri=https://verifier.com/request/abc
+    
+    Direct routing to OID4VP flow
+  end note
+  
+  OOBParser -> OOBParser: Extract request parameters
+  OOBParser --> UI: PresentationRequestInvitation
+  
+  UI -> Router: routeInvitation(type: PRESENTATION_REQUEST)
+  activate Router
+  
+  Router -> OID4VP: handlePresentationRequest(requestUri)
+  activate OID4VP
+  
+  note right of OID4VP
+    **Routing Decision:**
+    Type = Presentation Request
+    Protocol = OpenID4VP
+    
+    → Proceed to SD-04 flow
+    (OpenID4VP Direct Post)
+  end note
+  
+  OID4VP -> OID4VP: Continue with SD-04
+  
+  note over OID4VP
+    See SD-04: OpenID4VP Direct Post Flow
+    
+    for complete proof presentation flow
+  end note
+  
+  deactivate OID4VP
+  deactivate Router
+
+else DIDComm OOB Invitation (JSON)
+  
+  OOBParser -> OOBParser: Detect _oob parameter
+  OOBParser -> OOBParser: Decode base64
+  OOBParser -> OOBParser: Parse JSON structure
+  
+  note right of OOBParser
+    **Detected: DIDComm Out-of-Band Invitation**
+    
+    JSON Structure (RFC 0434):
+    {
+      "@type": "https://didcomm.org/out-of-band/2.0/invitation",
+      "@id": "unique-id",
+      "label": "Acme Corporation",
+      "goal_code": "connect | issue | verify",
+      "goal": "To establish a connection",
+      "accept": ["didcomm/v2"],
+      "services": [{
+        "id": "#inline",
+        "type": "did-communication",
+        "serviceEndpoint": "https://agent.acme.com",
+        "recipientKeys": ["did:key:z6Mk..."]
+      }],
+      "attachments": [...]
+    }
+  end note
+  
+  OOBParser -> OOBParser: Extract @type
+  OOBParser -> OOBParser: Validate OOB format
+  
+  OOBParser -> OOBParser: Extract fields:\n- label\n- goal_code\n- services\n- attachments
+  
+  OOBParser --> UI: DIDCommOOBInvitation
+  deactivate OOBParser
+  
+  == 3. Display Invitation to User ==
+  
+  UI -> UI: Extract invitation details
+  
+  UI -> User: Display invitation
+  activate User
+  
+  note right of UI
+    **Invitation Preview:**
+    
+    From: Acme Corporation
+    Purpose: [goal description]
+    
+    Supported protocols:
+    • DIDComm v2
+    • OpenID4VCI (if in services)
+    • OpenID4VP (if in services)
+    
+    [Accept] [Reject]
+  end note
+  
+  User -> UI: Review invitation
+  
+  alt User rejects invitation
+    
+    User -> UI: Reject
+    UI -> User: Invitation declined
+    deactivate User
+    
+    note over UI
+      Flow ends
+      No connection established
+    end note
+    
+  else User accepts invitation
+    
+    User -> UI: Accept
+    deactivate User
+    
+    == 4. Determine Goal & Route to Protocol ==
+    
+    UI -> Router: routeOOBInvitation(invitation)
+    activate Router
+    
+    Router -> Router: Extract goal_code
+    Router -> Router: Extract services
+    Router -> Router: Extract attachments
+    
+    note right of Router
+      **Goal Code Determines Flow:**
+      
+      goal_code values:
+      • "connect" → Connection establishment
+      • "issue" → Credential issuance
+      • "verify" → Proof presentation
+      • "request-mediate" → Mediator setup
+      
+      Service types:
+      • "did-communication" → DIDComm
+      • "oid4vci" → OpenID4VCI
+      • "oid4vp" → OpenID4VP
+    end note
+    
+    alt goal_code = "connect"
+      
+      Router -> Router: Route to connection flow
+      
+      note right of Router
+        **Connection Flow Selected**
+        
+        Establishing DIDComm connection
+        with the inviter
+      end note
+      
+      Router -> DIDComm: establishConnection(invitation)
+      activate DIDComm
+      
+      DIDComm -> DIDComm: Parse invitation
+      DIDComm -> DIDComm: Extract service endpoint
+      DIDComm -> DIDComm: Extract inviter DID/keys
+      
+      DIDComm -> DIDComm: Create pairwise DID
+      DIDComm -> DIDComm: Generate connection request
+      
+      note over DIDComm
+        See SD-06: DIDComm Connection Protocol
+        
+        for complete connection establishment flow:
+        • Create pairwise DID (did:peer)
+        • Register with mediator
+        • Send connection request
+        • Receive connection response
+        • Send acknowledgment
+      end note
+      
+      DIDComm -> ConnStore: Store connection
+      activate ConnStore
+      ConnStore --> DIDComm: Stored
+      deactivate ConnStore
+      
+      DIDComm --> Router: Connection established
+      deactivate DIDComm
+      
+      Router --> UI: Success
+      deactivate Router
+      
+      UI -> User: Connection established with\nAcme Corporation
+      
+    else goal_code = "issue" AND service = "did-communication"
+      
+      Router -> Router: Route to DIDComm issuance
+      
+      note right of Router
+        **DIDComm Credential Issuance Flow**
+        
+        Issuer will send credential offer
+        via DIDComm after connection
+      end note
+      
+      Router -> DIDComm: establishConnection(invitation)
+      activate DIDComm
+      
+      DIDComm -> DIDComm: First establish connection
+      
+      note over DIDComm
+        1. Establish connection (SD-06)
+        2. Issuer sends credential offer
+        3. Continue with SD-03: DIDComm Credential Issuance
+      end note
+      
+      DIDComm --> Router: Connection ready
+      deactivate DIDComm
+      
+      Router --> UI: Waiting for credential offer
+      deactivate Router
+      
+      UI -> User: Connected.\nWaiting for credential offer...
+      
+      note over UI, User
+        Issuer will send credential offer message
+        via DIDComm (SD-03 flow will continue)
+      end note
+      
+    else goal_code = "issue" AND service = "oid4vci"
+      
+      Router -> Router: Route to OpenID4VCI
+      
+      note right of Router
+        **OpenID4VCI Credential Issuance**
+        
+        OOB invitation contains OpenID4VCI
+        credential offer parameters
+      end note
+      
+      Router -> Router: Extract attachments
+      Router -> Router: Find credential_offer attachment
+      
+      Router -> OID4VCI: handleCredentialOffer(offer)
+      activate OID4VCI
+      
+      note over OID4VCI
+        See SD-01: OpenID4VCI Pre-Authorized Code Flow
+        or SD-02: OpenID4VCI Authorization Code Flow
+        
+        for complete credential issuance
+      end note
+      
+      OID4VCI --> Router: Credential received
+      deactivate OID4VCI
+      
+      Router --> UI: Success
+      deactivate Router
+      
+      UI -> User: Credential received!
+      
+    else goal_code = "verify" AND service = "did-communication"
+      
+      Router -> Router: Route to DIDComm presentation
+      
+      note right of Router
+        **DIDComm Proof Presentation Flow**
+        
+        Verifier will send proof request
+        via DIDComm after connection
+      end note
+      
+      Router -> DIDComm: establishConnection(invitation)
+      activate DIDComm
+      
+      DIDComm -> DIDComm: First establish connection
+      
+      note over DIDComm
+        1. Establish connection (SD-06)
+        2. Verifier sends proof request
+        3. Continue with SD-05: DIDComm Present Proof
+      end note
+      
+      DIDComm --> Router: Connection ready
+      deactivate DIDComm
+      
+      Router --> UI: Waiting for proof request
+      deactivate Router
+      
+      UI -> User: Connected.\nWaiting for proof request...
+      
+      note over UI, User
+        Verifier will send proof request message
+        via DIDComm (SD-05 flow will continue)
+      end note
+      
+    else goal_code = "verify" AND service = "oid4vp"
+      
+      Router -> Router: Route to OpenID4VP
+      
+      note right of Router
+        **OpenID4VP Proof Presentation**
+        
+        OOB invitation contains OpenID4VP
+        presentation request parameters
+      end note
+      
+      Router -> Router: Extract attachments
+      Router -> Router: Find presentation_request attachment
+      
+      Router -> OID4VP: handlePresentationRequest(request)
+      activate OID4VP
+      
+      note over OID4VP
+        See SD-04: OpenID4VP Direct Post Flow
+        
+        for complete proof presentation:
+        • Parse presentation definition
+        • Match credentials
+        • User selects credentials
+        • Generate presentation
+        • Submit to verifier
+      end note
+      
+      OID4VP --> Router: Presentation sent
+      deactivate OID4VP
+      
+      Router --> UI: Success
+      deactivate Router
+      
+      UI -> User: Proof presented successfully
+      
+    else goal_code = "request-mediate"
+      
+      Router -> Router: Route to mediator setup
+      
+      note right of Router
+        **Mediator Registration**
+        
+        OOB invitation is for setting up
+        a DIDComm mediator service
+      end note
+      
+      Router -> DIDComm: registerMediator(invitation)
+      activate DIDComm
+      
+      note over DIDComm
+        Mediator setup flow:
+        • Establish connection with mediator
+        • Send coordinate-mediation request
+        • Receive mediation grant
+        • Register routing keys
+        • Update DID documents with mediator endpoint
+        
+        (Part of wallet initialization - SD-08)
+      end note
+      
+      DIDComm --> Router: Mediator registered
+      deactivate DIDComm
+      
+      Router --> UI: Success
+      deactivate Router
+      
+      UI -> User: Mediator configured
+      
+    else Multiple services available
+      
+      Router -> Router: Multiple protocols detected
+      
+      note right of Router
+        **Multi-Protocol Invitation**
+        
+        Invitation offers multiple ways to connect:
+        • DIDComm v2
+        • OpenID4VCI
+        • OpenID4VP
+        
+        Let user choose preferred method
+      end note
+      
+      Router --> UI: Multiple options available
+      deactivate Router
+      
+      UI -> User: Choose connection method:\n○ DIDComm (peer-to-peer)\n○ OpenID (standard)
+      activate User
+      
+      User -> UI: Select protocol
+      deactivate User
+      
+      UI -> Router: routeWithProtocol(selection)
+      activate Router
+      
+      Router -> Router: Route to selected protocol handler
+      
+      note over Router
+        Proceed with selected protocol flow
+      end note
+      
+      deactivate Router
+      
+    end
+    
+  end
+  
+else Invalid/Unknown Format
+  
+  OOBParser -> OOBParser: Format not recognized
+  OOBParser --> UI: InvalidInvitationError
+  deactivate OOBParser
+  
+  UI -> User: Invalid invitation format
+  activate User
+  deactivate User
+  
+  note over UI
+    Flow ends with error
+    
+    Possible reasons:
+    • Malformed QR code
+    • Unsupported protocol
+    • Corrupted data
+    • Expired invitation
+  end note
+  
+end
+
+deactivate UI
+
+== Summary ==
+
+note over User, ConnStore
+  **Out-of-Band Invitation Flow Complete**
+  
+  **Key Features:**
+  ✓ Multi-protocol support (DIDComm, OpenID4VCI, OpenID4VP)
+  ✓ Flexible invitation format
+  ✓ Single QR for multiple connection options
+  ✓ User choice when multiple protocols available
+  ✓ Seamless routing to appropriate flow
+  
+  **Supported Goal Codes:**
+  • connect → Establish connection (SD-06)
+  • issue → Credential issuance (SD-03 or SD-01/02)
+  • verify → Proof presentation (SD-05 or SD-04)
+  • request-mediate → Mediator setup
+  
+  **Supported Services:**
+  • DIDComm v2 (did-communication)
+  • OpenID4VCI (credential issuance)
+  • OpenID4VP (proof presentation)
+  
+  **RFC 0434 Compliance:**
+  The wallet correctly implements the DIDComm
+  Out-of-Band Protocol specification, enabling
+  interoperability with any compliant agent.
+  
+  **User Experience:**
+  Single QR scan can:
+  • Establish connection
+  • Issue credential
+  • Request proof
+  • Configure mediator
+  
+  The wallet automatically determines the
+  appropriate flow based on invitation content.
+end note
+
+@enduml

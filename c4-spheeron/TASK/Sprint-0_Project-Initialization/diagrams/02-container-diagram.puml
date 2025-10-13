@@ -1,0 +1,100 @@
+@startuml Sphereon SSI Wallet - Container Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Container Diagram - Sphereon SSI Wallet Architecture
+
+Person(user, "Pengguna Wallet", "Pengguna aplikasi mobile")
+
+System_Boundary(mobile_device, "Mobile Device (iOS/Android)") {
+    
+    Container_Boundary(react_native_app, "React Native Application") {
+        Container(ui_layer, "UI Layer", "React Components, Expo", "Layar, Navigasi\nKomponen antarmuka pengguna\nReact Navigation")
+        
+        Container(state_management, "Manajemen State", "React Context / Redux", "State aplikasi, Sesi pengguna\nState credential\nState koneksi")
+        
+        Container(business_logic, "Logika Bisnis", "TypeScript Services", "Operasi SSI\nManajemen credential\nOperasi DID\nPresentation Exchange")
+        
+        Container(ssi_sdk, "Sphereon SSI-SDK", "TypeScript Library", "@sphereon/ssi-sdk-*\nOID4VCI, OID4VP\nDID management\nCredential operations")
+    }
+    
+    Container_Boundary(native_modules, "Native Modules (Expo)") {
+        Container(secure_storage, "Penyimpanan Aman", "expo-secure-store", "Penyimpanan kunci terenkripsi\nKeychain (iOS)\nKeystore (Android)")
+        
+        Container(biometric, "Autentikasi Biometrik", "expo-local-authentication", "Face ID / Touch ID\nSidik Jari")
+        
+        Container(camera, "Kamera/QR", "expo-camera\nexpo-barcode-scanner", "Scan kode QR\nuntuk undangan")
+        
+        Container(crypto, "Kriptografi", "expo-crypto", "Hashing, Random\nOperasi kriptografi")
+    }
+    
+    ContainerDb(local_storage, "Penyimpanan Lokal", "AsyncStorage / Realm", "Credentials\nKoneksi\nDID\nPesan")
+}
+
+System_Ext(issuer_api, "Issuer API", "OpenID4VCI endpoint")
+System_Ext(verifier_api, "Verifier API", "OpenID4VP endpoint")
+System_Ext(did_resolver, "DID Resolver", "Universal resolver")
+System_Ext(didcomm_mediator, "DIDComm Mediator", "Routing pesan")
+System_Ext(cloud_backup, "Cloud Backup", "iCloud/Google Drive")
+
+' Internal relationships
+Rel(user, ui_layer, "Berinteraksi dengan", "Sentuhan, gesture")
+Rel(ui_layer, state_management, "Menggunakan", "Baca/Tulis state")
+Rel(ui_layer, business_logic, "Memanggil", "Method service")
+Rel(state_management, business_logic, "Update dari", "Perubahan state")
+
+Rel(business_logic, ssi_sdk, "Menggunakan", "Operasi SSI")
+Rel(business_logic, secure_storage, "Simpan kunci", "Terenkripsi")
+Rel(business_logic, biometric, "Autentikasi", "Cek biometrik")
+Rel(business_logic, camera, "Scan QR", "Undangan")
+Rel(business_logic, crypto, "Operasi kripto", "Hash, enkripsi")
+Rel(business_logic, local_storage, "Simpan data", "CRUD")
+
+' External relationships
+Rel(ssi_sdk, issuer_api, "Minta credentials", "HTTPS, OID4VCI")
+Rel(ssi_sdk, verifier_api, "Tampilkan bukti", "HTTPS, OID4VP")
+Rel(ssi_sdk, did_resolver, "Resolve DID", "HTTPS")
+Rel(ssi_sdk, didcomm_mediator, "Routing pesan", "HTTPS/WSS")
+Rel(business_logic, cloud_backup, "Backup/Restore", "Native APIs")
+
+note right of ui_layer
+  **Komponen UI:**
+  • Layar (auth, credentials, koneksi, pengaturan)
+  • Navigasi (stack, tabs, drawer)
+  • Komponen reusable
+  • Tema & styling (React Native Paper)
+  
+  **Sprint 0: Buat struktur navigasi dasar**
+end note
+
+note left of ssi_sdk
+  **Modul SSI-SDK:**
+  • @sphereon/ssi-sdk-core
+  • @sphereon/ssi-sdk-oid4vci (penerbitan credential)
+  • @sphereon/ssi-sdk-oid4vp (presentasi credential)
+  • @sphereon/ssi-sdk-did (operasi DID)
+  • @sphereon/ssi-sdk-credential-store
+  
+  **Sprint 0: Install dependencies**
+end note
+
+note bottom of local_storage
+  **Strategi Penyimpanan:**
+  • AsyncStorage: Pengaturan app, state UI
+  • Secure Store: Kunci, PIN, rahasia
+  • Realm/WatermelonDB: Credentials, koneksi (future)
+  
+  **Enkripsi:** Semua data sensitif terenkripsi
+end note
+
+note top of native_modules
+  **Expo Managed Workflow:**
+  Akses fungsi native tanpa ejecting
+  Modul pre-configured dengan API konsisten
+  Update otomatis via Expo Updates
+  
+  **Sprint 0: Konfigurasi expo plugins di app.json**
+end note
+
+@enduml

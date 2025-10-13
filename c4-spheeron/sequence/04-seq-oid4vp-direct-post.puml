@@ -1,0 +1,511 @@
+@startuml 04-seq-oid4vp-direct-post
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title OpenID4VP Direct Post Flow\n**Proof Presentation with Presentation Exchange v2**
+
+actor "User\n(Holder)" as User
+participant "Mobile\nWallet UI" as WalletUI
+participant "QR Scanner" as QRScanner
+participant "OID4VP\nClient" as OID4VP
+participant "Presentation\nExchange\nEngine" as PExEngine
+participant "Credential\nStore" as CredStore
+participant "Key\nManager" as KeyMgr
+participant "DID\nManager" as DIDMgr
+participant "DID\nResolver" as DIDResolver
+participant "Verifier\nService" as Verifier
+
+== 1. QR Scan & Parse Authorization Request ==
+
+User -> WalletUI: Scan verifier QR code
+activate WalletUI
+WalletUI -> QRScanner: startScanning()
+activate QRScanner
+QRScanner -> QRScanner: Detect QR code
+QRScanner --> WalletUI: QR URL detected
+deactivate QRScanner
+
+note right of QRScanner
+  **QR URL Format:**
+  openid4vp://?
+  response_type=vp_token
+  &client_id=https://verifier.com
+  &response_uri=https://verifier.com/response
+  &response_mode=direct_post
+  &presentation_definition=<base64_json>
+  &nonce=n-0S6_WzA2Mj
+  &state=af0ifjsldkj
+end note
+
+WalletUI -> OID4VP: parseAuthorizationRequest(url)
+activate OID4VP
+
+OID4VP -> OID4VP: Parse URL parameters
+OID4VP -> OID4VP: Extract:\n- client_id (verifier)\n- response_uri\n- response_mode\n- presentation_definition\n- nonce\n- state
+
+alt presentation_definition_uri present
+  OID4VP -> Verifier: GET presentation_definition_uri
+  activate Verifier
+  Verifier --> OID4VP: presentation_definition JSON
+  deactivate Verifier
+else presentation_definition inline
+  OID4VP -> OID4VP: Decode base64 JSON
+end
+
+OID4VP -> OID4VP: Validate authorization request
+OID4VP -> OID4VP: Check required parameters
+
+alt Invalid request
+  OID4VP --> WalletUI: Invalid request
+  WalletUI -> User: Error: Invalid verification request
+  deactivate OID4VP
+  deactivate WalletUI
+  [<-- User
+end
+
+== 2. Presentation Definition Analysis ==
+
+OID4VP -> PExEngine: evaluatePresentationDefinition(pd)
+activate PExEngine
+
+note right of PExEngine
+  **Presentation Definition (PEx v2):**
+  {
+    "id": "vp_employment",
+    "input_descriptors": [{
+      "id": "employment_credential",
+      "name": "Employment Credential",
+      "purpose": "Verify employment status",
+      "constraints": {
+        "fields": [{
+          "path": ["$.type"],
+          "filter": {
+            "type": "array",
+            "contains": {"const": "EmploymentCredential"}
+          }
+        }, {
+          "path": ["$.credentialSubject.employmentStatus"],
+          "filter": {"type": "string"}
+        }, {
+          "path": ["$.issuer"],
+          "filter": {
+            "type": "string",
+            "pattern": "did:ion:.*"
+          }
+        }],
+        "limit_disclosure": "required"
+      }
+    }],
+    "submission_requirements": [{
+      "rule": "all",
+      "from": "A"
+    }]
+  }
+end note
+
+PExEngine -> PExEngine: Parse presentation definition
+PExEngine -> PExEngine: Extract input descriptors
+PExEngine -> PExEngine: For each descriptor:\n- Parse constraints\n- Extract field requirements\n- Parse JSON path filters\n- Check format requirements
+
+PExEngine -> PExEngine: Parse submission requirements
+PExEngine -> PExEngine: Determine logical rules\n(all, pick, etc.)
+
+== 3. Credential Matching ==
+
+PExEngine -> CredStore: queryCredentials()
+activate CredStore
+
+CredStore -> CredStore: Fetch all credentials from DB
+CredStore --> PExEngine: List of credentials
+deactivate CredStore
+
+loop For each input descriptor
+  PExEngine -> PExEngine: Get descriptor constraints
+  
+  loop For each credential
+    PExEngine -> PExEngine: Evaluate credential against descriptor
+    
+    PExEngine -> PExEngine: Check type constraint
+    note right of PExEngine
+      **Field Constraint Evaluation:**
+      - JSON Path: $.type
+      - Filter: contains "EmploymentCredential"
+      - Check credential.type array
+      - Match found? ✓ or ✗
+    end note
+    
+    PExEngine -> PExEngine: Check field constraints
+    loop For each field constraint
+      PExEngine -> PExEngine: Apply JSON Path
+      PExEngine -> PExEngine: Extract value
+      PExEngine -> PExEngine: Apply filter
+      PExEngine -> PExEngine: Check match
+    end
+    
+    PExEngine -> PExEngine: Check issuer constraint
+    PExEngine -> PExEngine: Check format constraint
+    
+    alt All constraints satisfied
+      PExEngine -> PExEngine: Mark credential as match
+      PExEngine -> PExEngine: Calculate match score
+    else Some constraint failed
+      PExEngine -> PExEngine: Credential doesn't match
+    end
+  end
+  
+  PExEngine -> PExEngine: Rank matched credentials\nby score
+end
+
+alt No matching credentials
+  PExEngine --> OID4VP: No credentials found
+  OID4VP --> WalletUI: Cannot fulfill request
+  WalletUI -> User: You don't have the required credentials
+  deactivate PExEngine
+  deactivate OID4VP
+  deactivate WalletUI
+  [<-- User
+end
+
+PExEngine -> PExEngine: Group matches by descriptor
+PExEngine -> PExEngine: Apply submission requirements
+PExEngine --> OID4VP: Matched credentials map
+deactivate PExEngine
+
+== 4. User Selection ==
+
+OID4VP -> WalletUI: displayCredentialSelection(matches)
+deactivate OID4VP
+
+WalletUI -> User: Display presentation request:\n- Verifier name\n- Purpose\n- Required credentials\n- Matched credentials
+
+note left of User
+  **UI Shows:**
+  Verifier: ACME Corp
+  Purpose: Verify employment
+  
+  Required:
+  - Employment Credential
+    ✓ Found: "ACME Employee Badge"
+    ✓ Found: "Previous Employer ID"
+  
+  Select credential to share:
+end note
+
+User -> User: Review request
+User -> WalletUI: Select "ACME Employee Badge"
+
+WalletUI -> User: Display attributes in credential
+User -> WalletUI: Select attributes to disclose\n(selective disclosure)
+
+note left of User
+  **Selective Disclosure Options:**
+  ☑ Employment Status: "Full-time"
+  ☑ Department: "Engineering"
+  ☑ Start Date: "2022-01-15"
+  ☐ Salary (don't disclose)
+  ☐ Employee ID (don't disclose)
+end note
+
+User -> WalletUI: Confirm selection
+
+alt User cancels
+  WalletUI -> User: Presentation cancelled
+  deactivate WalletUI
+  [<-- User
+end
+
+== 5. Presentation Generation ==
+
+WalletUI -> OID4VP: generatePresentation(selectedCreds, attrs)
+activate OID4VP
+
+OID4VP -> CredStore: getCredential(credentialId)
+activate CredStore
+CredStore --> OID4VP: Credential (full)
+deactivate CredStore
+
+OID4VP -> OID4VP: Check credential format
+
+alt SD-JWT format (selective disclosure)
+  OID4VP -> OID4VP: Parse SD-JWT
+  note right of OID4VP
+    **SD-JWT Structure:**
+    <Issuer-signed JWT>~<Disclosure 1>~<Disclosure 2>~...
+    
+    Disclosures are base64(salt + claim + value)
+    Only include selected disclosures
+  end note
+  
+  OID4VP -> OID4VP: Select disclosure claims
+  OID4VP -> OID4VP: Include only selected disclosures
+  OID4VP -> OID4VP: Keep issuer-signed JWT
+  OID4VP -> OID4VP: Reconstruct SD-JWT:\njwt~disclosure1~disclosure3
+
+else JSON-LD VC format
+  OID4VP -> OID4VP: Apply JSON-LD frame
+  OID4VP -> OID4VP: Filter attributes
+  note right of OID4VP
+    **JSON-LD Selective Disclosure:**
+    Use BBS+ signatures (if supported)
+    - Derive proof with selected attributes
+    - Original signature remains valid
+    - Hidden attributes not included
+  end note
+
+else JWT-VC format (no selective disclosure)
+  OID4VP -> OID4VP: Include full credential
+  note right of OID4VP
+    Standard JWT-VC doesn't support
+    selective disclosure natively.
+    Entire credential included.
+  end note
+end
+
+OID4VP -> OID4VP: Create Verifiable Presentation wrapper
+
+note right of OID4VP
+  **Verifiable Presentation:**
+  {
+    "@context": ["https://www.w3.org/2018/credentials/v1"],
+    "type": ["VerifiablePresentation"],
+    "verifiableCredential": [
+      <credential_jwt_or_json>
+    ],
+    "holder": "did:key:z6Mkf..."
+  }
+end note
+
+== 6. Presentation Submission Descriptor ==
+
+OID4VP -> OID4VP: Build presentation_submission
+
+note right of OID4VP
+  **Presentation Submission:**
+  {
+    "id": "submission_1",
+    "definition_id": "vp_employment",
+    "descriptor_map": [{
+      "id": "employment_credential",
+      "format": "jwt_vc",
+      "path": "$.verifiableCredential[0]",
+      "path_nested": {
+        "format": "jwt_vc",
+        "path": "$.verifiableCredential[0]"
+      }
+    }]
+  }
+  
+  Maps each input_descriptor to credential location
+  in the presentation
+end note
+
+OID4VP -> OID4VP: Create descriptor_map
+OID4VP -> OID4VP: For each matched credential:\n- Reference descriptor ID\n- Specify JSON path\n- Specify format
+
+== 7. Holder Binding (JWT) ==
+
+OID4VP -> DIDMgr: getHolderDID()
+activate DIDMgr
+DIDMgr --> OID4VP: holderDID
+deactivate DIDMgr
+
+OID4VP -> KeyMgr: getPrivateKey(holderDID)
+activate KeyMgr
+KeyMgr --> OID4VP: privateKey
+deactivate KeyMgr
+
+OID4VP -> OID4VP: Build holder binding JWT
+
+note right of OID4VP
+  **Holder Binding JWT:**
+  Header:
+  {
+    "alg": "EdDSA",
+    "typ": "JWT",
+    "kid": "did:key:z6Mkf...#z6Mkf..."
+  }
+  
+  Payload:
+  {
+    "iss": "did:key:z6Mkf...",
+    "aud": "https://verifier.com",
+    "nonce": "n-0S6_WzA2Mj",
+    "iat": 1516239022,
+    "vp": <verifiable_presentation>
+  }
+end note
+
+OID4VP -> OID4VP: Create JWT payload:\n- iss: holder DID\n- aud: verifier\n- nonce: from request\n- vp: presentation
+
+OID4VP -> KeyMgr: signJWT(payload, privateKey)
+activate KeyMgr
+KeyMgr -> KeyMgr: Sign with holder key
+KeyMgr --> OID4VP: JWT signature
+deactivate KeyMgr
+
+OID4VP -> OID4VP: Combine to vp_token JWT
+
+== 8. Presentation Validation (Self-Check) ==
+
+OID4VP -> OID4VP: Validate presentation structure
+OID4VP -> OID4VP: Check holder DID matches credential subject
+OID4VP -> OID4VP: Check all required fields present
+OID4VP -> OID4VP: Validate presentation_submission\nmatches definition
+
+alt Validation fails
+  OID4VP --> WalletUI: Presentation invalid
+  WalletUI -> User: Error: Cannot create valid presentation
+  deactivate OID4VP
+  deactivate WalletUI
+  [<-- User
+end
+
+== 9. Send Presentation (Direct Post) ==
+
+OID4VP -> OID4VP: Build POST request
+
+note right of OID4VP
+  **Direct Post Request:**
+  POST https://verifier.com/response
+  Content-Type: application/x-www-form-urlencoded
+  
+  vp_token=eyJhbGc...
+  &presentation_submission={"id":"submission_1",...}
+  &state=af0ifjsldkj
+end note
+
+OID4VP -> Verifier: POST to response_uri\n(vp_token + submission + state)
+activate Verifier
+
+WalletUI -> User: Sending presentation...
+
+Verifier -> Verifier: Receive presentation
+Verifier -> Verifier: Extract vp_token (JWT)
+Verifier -> Verifier: Parse holder binding JWT
+
+Verifier -> Verifier: Extract holder DID (iss)
+Verifier -> DIDResolver: Resolve holder DID
+activate DIDResolver
+DIDResolver --> Verifier: Holder DID document + publicKey
+deactivate DIDResolver
+
+Verifier -> Verifier: Verify JWT signature\nwith holder publicKey
+Verifier -> Verifier: Validate nonce matches
+Verifier -> Verifier: Validate aud matches verifier
+Verifier -> Verifier: Extract VP from payload
+
+alt Invalid holder binding
+  Verifier --> OID4VP: 400 Bad Request\n{"error": "invalid_vp_token"}
+  OID4VP --> WalletUI: Presentation rejected
+  WalletUI -> User: Error: Verifier rejected presentation
+  deactivate Verifier
+  deactivate OID4VP
+  deactivate WalletUI
+  [<-- User
+end
+
+== 10. Verifier Validates Presentation ==
+
+Verifier -> Verifier: Extract verifiableCredential
+
+Verifier -> Verifier: Parse credential (JWT/JSON-LD)
+Verifier -> Verifier: Extract issuer DID
+
+Verifier -> DIDResolver: Resolve issuer DID
+activate DIDResolver
+DIDResolver --> Verifier: Issuer DID document + publicKey
+deactivate DIDResolver
+
+Verifier -> Verifier: Verify credential signature\nwith issuer publicKey
+
+alt Invalid credential signature
+  Verifier --> OID4VP: 400 Bad Request\n{"error": "invalid_credential"}
+  OID4VP --> WalletUI: Verification failed
+  WalletUI -> User: Error: Credential verification failed
+  deactivate Verifier
+  deactivate OID4VP
+  deactivate WalletUI
+  [<-- User
+end
+
+Verifier -> Verifier: Validate credential structure
+Verifier -> Verifier: Check issuanceDate
+Verifier -> Verifier: Check expirationDate
+Verifier -> Verifier: Check credential not expired
+
+Verifier -> Verifier: Check revocation status
+note right of Verifier
+  **Revocation Check:**
+  - Fetch StatusList2021
+  - Check credential index
+  - Ensure not revoked
+end note
+
+Verifier -> Verifier: Validate against presentation definition
+Verifier -> Verifier: Check all constraints satisfied
+Verifier -> Verifier: Validate presentation_submission
+Verifier -> Verifier: Check descriptor_map correct
+
+alt Presentation doesn't match definition
+  Verifier --> OID4VP: 400 Bad Request\n{"error": "invalid_presentation"}
+  OID4VP --> WalletUI: Verification failed
+  WalletUI -> User: Error: Presentation doesn't meet requirements
+  deactivate Verifier
+  deactivate OID4VP
+  deactivate WalletUI
+  [<-- User
+end
+
+Verifier -> Verifier: Extract required claims
+Verifier -> Verifier: Business logic validation
+Verifier -> Verifier: All checks passed ✓
+
+== 11. Verifier Response ==
+
+alt Direct Post with redirect_uri
+  Verifier -> Verifier: Generate success redirect
+  Verifier --> OID4VP: 200 OK\n{"redirect_uri": "https://app.com/success"}
+  OID4VP -> OID4VP: Parse redirect_uri
+  OID4VP --> WalletUI: Presentation accepted
+  WalletUI -> User: ✓ Verification successful!\nRedirecting...
+  WalletUI -> WalletUI: Open redirect_uri in browser
+  
+else Direct Post without redirect
+  Verifier --> OID4VP: 200 OK\n{"status": "accepted"}
+  OID4VP --> WalletUI: Presentation accepted
+  WalletUI -> User: ✓ Verification successful!
+end
+
+deactivate Verifier
+
+== 12. Store Presentation History ==
+
+OID4VP -> CredStore: storePresentation(vp, verifier, timestamp)
+activate CredStore
+
+CredStore -> CredStore: Create presentation record
+CredStore -> CredStore: Store:\n- Verifier info\n- Credentials shared\n- Attributes disclosed\n- Timestamp
+
+CredStore --> OID4VP: History stored
+deactivate CredStore
+
+OID4VP -> WalletUI: Update presentation history UI
+deactivate OID4VP
+
+WalletUI -> User: Return to home
+deactivate WalletUI
+
+note over User, Verifier
+  **Flow Complete!**
+  User successfully presented proof to verifier.
+  Verifier validated credentials and granted access.
+  
+  **Key Features:**
+  - Selective disclosure (only shared chosen attributes)
+  - Credential validation (signature, expiry, revocation)
+  - Presentation Exchange v2 compliance
+  - Holder binding (cryptographic proof of possession)
+end note
+
+@enduml

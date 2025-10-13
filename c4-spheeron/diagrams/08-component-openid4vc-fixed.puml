@@ -1,0 +1,85 @@
+@startuml Sphereon Wallet - OpenID for Verifiable Credentials
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: OpenID for Verifiable Credentials\n[OID4VCI, OID4VP, and SIOPv2 Implementation]
+
+Container_Boundary(openid4vc, "OpenID4VC Module") {
+    
+    Container_Boundary(oid4vci_client, "OpenID4VCI Client") {
+        Component(oid4vci_orchestrator, "OID4VCI Orchestrator", "Issuance Flow Controller", "Coordinate credential issuance: Pre-Authorized Code, Authorization Code (PKCE), Deferred flows")
+        
+        Component(offer_parser, "Credential Offer Parser", "Offer Handler", "Parse offers from URL/inline, extract grants (pre-auth code, auth code), validate structure")
+        
+        Component(issuer_discovery, "Issuer Metadata Discovery", "Discovery Service", "Discover issuer capabilities: /.well-known/openid-credential-issuer and OAuth metadata")
+        
+        Component(authorization_handler, "Authorization Handler", "OAuth2 Flow Manager", "Handle Pre-Authorized Code and Authorization Code flows with PKCE")
+        
+        Component(proof_generator, "Proof of Possession Generator", "PoP JWT Generator", "Generate JWT proof of possession for key binding with holder DID")
+        
+        Component(credential_requester, "Credential Requester", "Credential Request Handler", "Request credentials from issuer with proof, handle immediate/deferred responses")
+        
+        Component(deferred_credential, "Deferred Credential Handler", "Polling Manager", "Poll deferred credential endpoint with retry strategy and background polling")
+        
+        Component(notification_handler, "Notification Endpoint Handler", "Acceptance Notification", "Send credential acceptance/deletion/failure notifications to issuer")
+    }
+    
+    Container_Boundary(oid4vp_client, "OpenID4VP Client") {
+        Component(oid4vp_orchestrator, "OID4VP Orchestrator", "Presentation Flow Controller", "Coordinate proof presentation: parse request, match credentials, build VP token, send response")
+        
+        Component(auth_request_parser, "Authorization Request Parser", "Request Parser", "Parse OpenID4VP requests: request_uri, request object (JWT), or parameters")
+        
+        Component(vp_token_builder, "VP Token Builder", "VP Generator", "Build VP token in JSON/JWT format with holder signature and nonce")
+        
+        Component(response_builder, "Response Builder", "Response Generator", "Build authorization response: vp_token, presentation_submission, id_token (SIOPv2)")
+        
+        Component(response_sender, "Response Sender", "Response Transmitter", "Send response via direct_post, direct_post.jwt, or redirect modes")
+    }
+    
+    Component(siopv2_client, "SIOPv2 Client", "Self-Issued OpenID Provider", "DID-based authentication: generate ID Token with holder DID, sign with key")
+}
+
+System_Ext(issuer_endpoints, "Issuer Endpoints", "OAuth2 and credential endpoints")
+System_Ext(verifier_endpoints, "Verifier Endpoints", "Request and response endpoints")
+System_Ext(pex_engine, "PEx Engine", "Presentation Exchange matching")
+System_Ext(credential_storage, "Credential Storage", "Store issued credentials")
+System_Ext(kms, "Key Management System", "Sign proofs and presentations")
+System_Ext(did_resolver, "DID Resolver", "Resolve DIDs")
+
+Rel(oid4vci_orchestrator, offer_parser, "Parses offers")
+Rel(oid4vci_orchestrator, issuer_discovery, "Discovers metadata")
+Rel(oid4vci_orchestrator, authorization_handler, "Gets token")
+Rel(oid4vci_orchestrator, proof_generator, "Generates PoP")
+Rel(oid4vci_orchestrator, credential_requester, "Requests credential")
+Rel(oid4vci_orchestrator, deferred_credential, "Polls deferred")
+Rel(oid4vci_orchestrator, notification_handler, "Sends notification")
+
+Rel(issuer_discovery, issuer_endpoints, "Fetches metadata")
+Rel(authorization_handler, issuer_endpoints, "Token request")
+Rel(proof_generator, kms, "Signs PoP JWT")
+Rel(proof_generator, did_resolver, "Resolves holder DID")
+Rel(credential_requester, issuer_endpoints, "Credential request")
+Rel(credential_requester, credential_storage, "Stores credential")
+Rel(deferred_credential, issuer_endpoints, "Polls endpoint")
+Rel(notification_handler, issuer_endpoints, "Sends notification")
+
+Rel(oid4vp_orchestrator, auth_request_parser, "Parses request")
+Rel(oid4vp_orchestrator, pex_engine, "Processes definition")
+Rel(oid4vp_orchestrator, vp_token_builder, "Builds VP token")
+Rel(oid4vp_orchestrator, response_builder, "Builds response")
+Rel(oid4vp_orchestrator, response_sender, "Sends response")
+
+Rel(auth_request_parser, verifier_endpoints, "Fetches request object")
+Rel(vp_token_builder, kms, "Signs VP")
+Rel(vp_token_builder, did_resolver, "Resolves holder DID")
+Rel(response_builder, siopv2_client, "Generates ID token")
+Rel(response_sender, verifier_endpoints, "Sends response")
+
+Rel(siopv2_client, kms, "Signs ID token")
+Rel(siopv2_client, did_resolver, "Resolves DID")
+
+SHOW_LEGEND()
+
+@enduml

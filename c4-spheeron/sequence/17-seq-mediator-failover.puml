@@ -1,0 +1,781 @@
+@startuml 17-seq-mediator-failover
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title DIDComm Mediator Failover & High Availability\n**Resilient Message Routing with Zero Message Loss**
+
+actor "User" as User
+participant "Mobile\nWallet" as Wallet
+participant "Connection\nManager" as ConnMgr
+participant "DIDComm\nMessage\nRouter" as Router
+participant "Health\nCheck\nService" as HealthCheck
+participant "Load\nBalancer" as LoadBalancer
+participant "Primary\nMediator" as Primary
+participant "Secondary\nMediator\n(Backup)" as Secondary
+database "Message\nQueue\n(Shared)" as MsgQueue
+participant "External\nAgent\n(Sender)" as Sender
+
+box "High Availability Infrastructure" #LightBlue
+  participant LoadBalancer
+  participant Primary
+  participant Secondary
+  participant MsgQueue
+end box
+
+== 1. Normal Operation (Primary Mediator Active) ==
+
+note over User, Sender
+  **Initial State:**
+  
+  • Wallet connected to Primary Mediator
+  • All messages routed via Primary
+  • Secondary Mediator on standby
+  • Health checks every 30 seconds
+  
+  System operating normally
+end note
+
+Wallet -> HealthCheck: Schedule periodic health check
+activate HealthCheck
+
+HealthCheck -> Primary: Ping / Heartbeat
+activate Primary
+
+Primary --> HealthCheck: Pong (200 OK)
+deactivate Primary
+
+note right of HealthCheck
+  **Health Check:**
+  
+  Interval: Every 30 seconds
+  Timeout: 10 seconds
+  
+  Status: ✓ Primary healthy
+  Response time: 85ms
+end note
+
+HealthCheck -> HealthCheck: Mark Primary as healthy
+HealthCheck --> Wallet: Primary status: HEALTHY
+deactivate HealthCheck
+
+note right of Wallet
+  **Mediator Configuration:**
+  
+  Primary: https://mediator1.example.com
+  Status: HEALTHY
+  
+  Secondary: https://mediator2.example.com
+  Status: STANDBY
+  
+  Current: Using Primary
+end note
+
+== 2. Normal Message Flow via Primary ==
+
+Sender -> LoadBalancer: Send message to wallet
+activate Sender
+activate LoadBalancer
+
+note right of Sender
+  **Inbound Message:**
+  
+  From: External issuer/verifier
+  To: Wallet's routing DID
+  Type: Credential offer / Proof request
+  
+  Destination: Wallet's mediator endpoint
+end note
+
+LoadBalancer -> LoadBalancer: Route to healthy mediator
+
+LoadBalancer -> Primary: Forward message
+activate Primary
+
+Primary -> MsgQueue: Store message in queue
+activate MsgQueue
+
+note right of MsgQueue
+  **Message Queue (Shared Storage):**
+  
+  Messages persisted in database/Redis
+  Shared between Primary and Secondary
+  
+  Ensures zero message loss during failover
+  
+  Message ID: msg_abc123
+  Recipient: did:peer:wallet...
+  Status: Queued
+  Timestamp: 2024-01-15T18:00:00Z
+end note
+
+MsgQueue --> Primary: Message stored
+deactivate MsgQueue
+
+Primary --> LoadBalancer: 202 Accepted
+deactivate Primary
+
+LoadBalancer --> Sender: Message queued
+deactivate LoadBalancer
+deactivate Sender
+
+Primary -> Wallet: Push notification
+activate Wallet
+
+note right of Wallet
+  **Push Notification:**
+  
+  🔔 New message available
+  
+  From: Issuer
+  Type: Credential offer
+  
+  [Open Wallet]
+end note
+
+Wallet -> User: Show notification
+activate User
+User -> Wallet: Open wallet
+deactivate User
+
+Wallet -> Primary: Pickup messages (RFC 0212)
+activate Primary
+
+Primary -> MsgQueue: Retrieve messages for wallet
+activate MsgQueue
+
+MsgQueue --> Primary: Message batch
+deactivate MsgQueue
+
+Primary --> Wallet: Deliver messages
+deactivate Primary
+
+Wallet -> Wallet: Process messages
+deactivate Wallet
+
+note over Wallet, Primary
+  **Normal operation complete**
+  All messages delivered successfully
+end note
+
+== 3. Primary Mediator Failure Detection ==
+
+note over HealthCheck, Primary
+  **Scenario: Primary Mediator Goes Down**
+  
+  Reasons could be:
+  • Server crash
+  • Network partition
+  • Maintenance
+  • DDoS attack
+  • Infrastructure failure
+end note
+
+HealthCheck -> Primary: Ping / Heartbeat
+activate HealthCheck
+
+note right of Primary
+  **Primary Mediator Down**
+  
+  Server not responding
+  Connection timeout
+end note
+
+HealthCheck -> HealthCheck: Wait for timeout (10 seconds)
+HealthCheck -> HealthCheck: Timeout!
+
+note right of HealthCheck
+  **Timeout Detected:**
+  
+  No response from Primary after 10s
+  Possible failure
+  
+  Initiating retry...
+end note
+
+HealthCheck -> Primary: Retry ping (attempt 2/3)
+HealthCheck -> HealthCheck: Timeout again!
+
+HealthCheck -> Primary: Retry ping (attempt 3/3)
+HealthCheck -> HealthCheck: Timeout again!
+
+note right of HealthCheck
+  **Primary Mediator Down Confirmed:**
+  
+  3 consecutive timeouts
+  Total time: 30 seconds
+  
+  Status: UNHEALTHY
+  
+  Triggering failover!
+end note
+
+HealthCheck -> HealthCheck: Mark Primary as UNHEALTHY
+HealthCheck -> Wallet: Primary status: UNHEALTHY
+deactivate HealthCheck
+
+Wallet -> User: Show warning
+activate User
+
+note right of User
+  **User Notification:**
+  
+  ⚠️ Connection issue detected
+  Switching to backup service...
+  
+  (Non-intrusive notification)
+end note
+
+deactivate User
+
+== 4. Automatic Failover to Secondary Mediator ==
+
+Wallet -> ConnMgr: initiateFailover()
+activate ConnMgr
+
+note right of ConnMgr
+  **Failover Decision:**
+  
+  Primary: UNHEALTHY
+  Secondary: Available
+  
+  Action: Switch to Secondary
+  
+  Failover strategy: Automatic
+  Estimated time: < 5 seconds
+end note
+
+ConnMgr -> ConnMgr: Load secondary configuration
+
+note right of ConnMgr
+  **Secondary Mediator Config:**
+  
+  URL: https://mediator2.example.com
+  DID: did:web:mediator2.example.com
+  Region: Different availability zone
+  Status: STANDBY → ACTIVATING
+end note
+
+ConnMgr -> Secondary: Test connectivity
+activate Secondary
+
+Secondary --> ConnMgr: 200 OK (Available)
+
+note right of Secondary
+  **Secondary Mediator Status:**
+  
+  ✓ Service running
+  ✓ Database connected
+  ✓ Message queue accessible
+  ✓ Ready to accept connections
+  
+  Response time: 120ms
+end note
+
+ConnMgr -> ConnMgr: Update active mediator → Secondary
+
+ConnMgr -> Secondary: POST /mediate-request
+note right of ConnMgr
+  **Coordinate Mediation Request (RFC 0211):**
+  
+  {
+    "@type": "https://didcomm.org/coordinate-mediation/2.0/mediate-request",
+    "@id": "req_xyz789",
+    "from": "did:peer:wallet...",
+    "to": "did:web:mediator2.example.com"
+  }
+  
+  Request new routing through Secondary
+end note
+
+Secondary -> Secondary: Process mediation request
+Secondary -> Secondary: Allocate new routing inbox
+Secondary -> Secondary: Generate routing keys
+
+Secondary --> ConnMgr: Mediation grant
+note right of Secondary
+  **Mediation Grant:**
+  
+  {
+    "@type": "https://didcomm.org/coordinate-mediation/2.0/mediate-grant",
+    "@id": "grant_789xyz",
+    "routing_did": "did:key:z6Mk...",
+    "endpoint": "https://mediator2.example.com/inbox/abc123"
+  }
+  
+  New inbox allocated on Secondary
+end note
+
+ConnMgr -> ConnMgr: Store new routing configuration
+
+note right of ConnMgr
+  **Updated Configuration:**
+  
+  Active Mediator: Secondary
+  Routing Endpoint: mediator2.example.com/inbox/abc123
+  Routing DID: did:key:z6Mk...
+  
+  Failover complete!
+end note
+
+ConnMgr --> Wallet: Failover successful
+deactivate ConnMgr
+
+Wallet -> User: Connected (backup service)
+activate User
+deactivate User
+
+== 5. Update DID Documents with New Service Endpoint ==
+
+note over Wallet, Secondary
+  **Critical Step: Update Service Endpoints**
+  
+  All DIDs using the mediator must update
+  their service endpoints to point to Secondary
+  
+  Otherwise, external agents will still
+  try to reach old Primary endpoint
+end note
+
+Wallet -> Wallet: Get all DIDs using mediator
+activate Wallet
+
+note right of Wallet
+  **DIDs to Update:**
+  
+  1. did:peer:connection_alice
+  2. did:peer:connection_bob
+  3. did:peer:connection_issuer
+  4. did:peer:connection_verifier
+  
+  Total: 4 pairwise DIDs
+end note
+
+loop For each DID using mediator
+
+  Wallet -> Wallet: Update DID document
+  
+  note right of Wallet
+    **DID Document Update:**
+    
+    Before:
+    {
+      "service": [{
+        "type": "DIDCommMessaging",
+        "serviceEndpoint": "https://mediator1.example.com/inbox/old"
+      }]
+    }
+    
+    After:
+    {
+      "service": [{
+        "type": "DIDCommMessaging",
+        "serviceEndpoint": "https://mediator2.example.com/inbox/abc123"
+      }]
+    }
+  end note
+  
+  Wallet -> Wallet: Get connection details
+  Wallet -> Wallet: Build connection-update message
+  
+  note right of Wallet
+    **Connection Update Message:**
+    
+    Notify connection partner of new endpoint
+    So they know where to send messages
+  end note
+  
+  Wallet -> Secondary: Send connection-update
+  activate Secondary
+  
+  Secondary -> MsgQueue: Queue update message
+  activate MsgQueue
+  MsgQueue --> Secondary: Queued
+  deactivate MsgQueue
+  
+  Secondary --> Wallet: Sent
+  deactivate Secondary
+
+end
+
+Wallet -> Wallet: All DIDs updated
+deactivate Wallet
+
+note right of Wallet
+  **Service Endpoint Update Complete:**
+  
+  ✓ All DID documents updated
+  ✓ Connection updates sent
+  ✓ Partners will use new endpoint
+  
+  Seamless migration
+end note
+
+== 6. Message Synchronization (Zero Message Loss) ==
+
+note over Wallet, MsgQueue
+  **Pending Messages Recovery:**
+  
+  Messages that arrived while Primary was down
+  are stored in shared Message Queue
+  
+  Secondary can retrieve them
+end note
+
+Wallet -> Secondary: GET /pickup?batch_size=50
+activate Wallet
+activate Secondary
+
+note right of Wallet
+  **Message Pickup (RFC 0212):**
+  
+  Retrieve any messages that arrived
+  during failover window
+end note
+
+Secondary -> MsgQueue: Query messages for wallet
+activate MsgQueue
+
+note right of MsgQueue
+  **Message Query:**
+  
+  Recipient: did:peer:wallet...
+  Status: Queued (undelivered)
+  
+  Result: 3 pending messages
+  
+  Messages received while Primary was down
+  but stored in shared queue
+end note
+
+MsgQueue --> Secondary: Pending messages (3)
+deactivate MsgQueue
+
+Secondary --> Wallet: Deliver message batch (3)
+deactivate Secondary
+
+Wallet -> Wallet: Process messages
+
+note right of Wallet
+  **Messages Recovered:**
+  
+  1. Credential offer (received during failover)
+  2. Proof request (received during failover)
+  3. Connection request (received during failover)
+  
+  ✓ Zero message loss
+  All messages delivered successfully
+end note
+
+Wallet -> Secondary: Send acknowledgments
+activate Secondary
+
+Secondary -> MsgQueue: Mark messages as delivered
+activate MsgQueue
+MsgQueue --> Secondary: Updated
+deactivate MsgQueue
+
+Secondary --> Wallet: ACK
+deactivate Secondary
+deactivate Wallet
+
+note over Wallet, MsgQueue
+  **Message Synchronization Complete**
+  
+  All pending messages delivered
+  No messages lost during failover
+end note
+
+== 7. Load Balancer Updates Routing ==
+
+note over LoadBalancer, Secondary
+  **Load Balancer Health Checks:**
+  
+  Load balancer also monitors mediator health
+  and routes traffic to healthy instances
+end note
+
+LoadBalancer -> Primary: Health check
+activate LoadBalancer
+
+note right of Primary
+  Primary still down
+  No response
+end note
+
+LoadBalancer -> LoadBalancer: Mark Primary as DOWN
+
+LoadBalancer -> Secondary: Health check
+activate Secondary
+
+Secondary --> LoadBalancer: 200 OK (Healthy)
+deactivate Secondary
+
+LoadBalancer -> LoadBalancer: Mark Secondary as UP
+
+note right of LoadBalancer
+  **Routing Update:**
+  
+  Mediator Status:
+  • Primary: DOWN ❌
+  • Secondary: UP ✓
+  
+  Route all traffic → Secondary
+end note
+
+LoadBalancer -> LoadBalancer: Update routing rules
+deactivate LoadBalancer
+
+== 8. Incoming Messages During Failover ==
+
+Sender -> LoadBalancer: Send message to wallet
+activate Sender
+activate LoadBalancer
+
+note right of Sender
+  **New Message Arrives:**
+  
+  Sender doesn't know about failover
+  Still sends to load balancer
+end note
+
+LoadBalancer -> LoadBalancer: Route to healthy mediator
+
+note right of LoadBalancer
+  **Smart Routing:**
+  
+  Primary: DOWN → Skip
+  Secondary: UP → Route here
+  
+  Automatic traffic distribution
+end note
+
+LoadBalancer -> Secondary: Forward message
+activate Secondary
+
+Secondary -> MsgQueue: Store message
+activate MsgQueue
+
+note right of MsgQueue
+  **Message Stored:**
+  
+  Message persisted in queue
+  Same process as before
+  
+  No service interruption
+end note
+
+MsgQueue --> Secondary: Stored
+deactivate MsgQueue
+
+Secondary --> LoadBalancer: 202 Accepted
+deactivate Secondary
+
+LoadBalancer --> Sender: Message queued
+deactivate LoadBalancer
+deactivate Sender
+
+Secondary -> Wallet: Push notification
+activate Wallet
+
+Wallet -> Secondary: Pickup messages
+activate Secondary
+
+Secondary -> MsgQueue: Retrieve messages
+activate MsgQueue
+MsgQueue --> Secondary: Message batch
+deactivate MsgQueue
+
+Secondary --> Wallet: Deliver messages
+deactivate Secondary
+
+Wallet -> Wallet: Process messages
+deactivate Wallet
+
+note over Wallet, Secondary
+  **Seamless Message Delivery:**
+  
+  Messages delivered via Secondary
+  User experiences no interruption
+end note
+
+== 9. Primary Mediator Recovery ==
+
+note over HealthCheck, Primary
+  **Scenario: Primary Comes Back Online**
+  
+  Primary mediator service restored:
+  • Server restarted
+  • Network issue resolved
+  • Maintenance completed
+end note
+
+HealthCheck -> Primary: Ping / Heartbeat
+activate HealthCheck
+activate Primary
+
+Primary --> HealthCheck: Pong (200 OK)
+deactivate Primary
+
+note right of HealthCheck
+  **Primary Recovered:**
+  
+  ✓ Primary responding
+  Response time: 90ms
+  
+  Status: HEALTHY again
+end note
+
+HealthCheck -> HealthCheck: Mark Primary as HEALTHY
+HealthCheck --> Wallet: Primary status: RECOVERED
+deactivate HealthCheck
+
+note over Wallet, Primary
+  **Failback Decision:**
+  
+  Options:
+  1. Failback to Primary (prefer primary)
+  2. Stay on Secondary (if stable)
+  
+  Strategy: Stay on Secondary unless issues
+  (Avoid unnecessary disruption)
+end note
+
+Wallet -> User: Primary service recovered
+activate User
+
+note right of User
+  **Optional User Choice:**
+  
+  ℹ️ Primary service restored
+  
+  Currently using: Backup service
+  
+  [Switch back to Primary]
+  [Keep using Backup]
+  
+  (Optional - can be automatic)
+end note
+
+User -> Wallet: Keep using Secondary
+deactivate User
+
+note right of Wallet
+  **Decision: Stay on Secondary**
+  
+  Secondary is working well
+  Avoid unnecessary disruption
+  
+  Primary available as backup now
+end note
+
+LoadBalancer -> LoadBalancer: Update health status
+activate LoadBalancer
+
+note right of LoadBalancer
+  **Updated Status:**
+  
+  Mediator Status:
+  • Primary: UP ✓ (recovered)
+  • Secondary: UP ✓ (active)
+  
+  Both healthy - can load balance
+  Current: Secondary handling traffic
+end note
+
+LoadBalancer -> LoadBalancer: Keep routing to Secondary
+deactivate LoadBalancer
+
+== 10. Monitoring & Logging ==
+
+note over HealthCheck, MsgQueue
+  **Failover Event Logged:**
+  
+  Complete audit trail of failover event:
+  
+  Timeline:
+  ────────────────────────────────
+  18:00:00 - Primary health check failed
+  18:00:30 - Failover initiated
+  18:00:35 - Connected to Secondary
+  18:00:40 - Service endpoints updated
+  18:00:45 - Messages synchronized
+  18:00:50 - Failover complete
+  
+  Downtime: 0 seconds (seamless)
+  Messages lost: 0
+  User impact: Minimal (notification only)
+  
+  18:15:00 - Primary recovered
+  18:15:05 - Primary marked as backup
+  
+  Resolution: Successful
+  Status: System operating normally
+end note
+
+== Summary ==
+
+note over User, Sender
+  **DIDComm Mediator Failover Complete**
+  
+  **Flow Summary:**
+  1. Primary mediator failure detected (health checks)
+  2. Automatic failover to Secondary (< 5 seconds)
+  3. Mediation re-established with Secondary
+  4. DID documents updated (new service endpoints)
+  5. Connection partners notified
+  6. Pending messages synchronized (zero loss)
+  7. Load balancer updated routing
+  8. Incoming messages routed to Secondary
+  9. Primary recovered (marked as backup)
+  10. System continues on Secondary
+  
+  **High Availability Features:**
+  ✓ Automatic health monitoring (30s intervals)
+  ✓ Rapid failure detection (3 retries = 30s)
+  ✓ Automatic failover (no manual intervention)
+  ✓ Zero message loss (shared message queue)
+  ✓ Load balancer integration
+  ✓ Multiple mediator support
+  ✓ Service endpoint updates
+  ✓ Message synchronization
+  
+  **Resilience Mechanisms:**
+  • Redundant mediators (Primary + Secondary)
+  • Shared message queue (persistence)
+  • Health checks (continuous monitoring)
+  • Load balancer (intelligent routing)
+  • Connection updates (partner notification)
+  • Automatic recovery (self-healing)
+  
+  **Zero Downtime Architecture:**
+  • Messages queued during failover
+  • Load balancer routes to healthy instance
+  • Wallet connects to available mediator
+  • No message loss
+  • Minimal user impact
+  
+  **User Experience:**
+  • Notification of issue (transparent)
+  • Automatic failover (no user action)
+  • Seamless message delivery
+  • Can choose to failback (optional)
+  
+  **Operations Benefits:**
+  • Maintenance without downtime
+  • Graceful degradation
+  • Automatic recovery
+  • Complete audit trail
+  • Zero message loss guarantee
+  
+  **Scalability:**
+  Multiple mediators can be added
+  Load balancer distributes traffic
+  Horizontal scaling supported
+  
+  The wallet provides enterprise-grade
+  reliability with automatic failover
+  and zero message loss.
+end note
+
+@enduml

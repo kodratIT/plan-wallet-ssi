@@ -1,0 +1,66 @@
+@startuml BC Wallet - Dynamic Proof Presentation
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Dynamic.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Dynamic Diagram - Zero-Knowledge Proof Presentation Flow
+
+Person(user, "User", "BC Wallet user")
+Container(mobile_app, "Mobile App", "React Native", "User interface")
+Container(credo_agent, "Credo Agent", "AFJ", "SSI agent")
+Container(indy_sdk, "Indy SDK", "Native", "Blockchain client")
+System_Ext(mediator, "Mediator Service", "Message router")
+System_Ext(verifier, "Verifier", "Aries Agent")
+System_Ext(ledger, "Indy Ledger", "Blockchain")
+
+' Proof Request Phase
+Rel(user, verifier, "1. Access protected resource")
+Rel(verifier, verifier, "2. Generate proof request (specify attributes & predicates)")
+Rel(verifier, mediator, "3. Send proof request", "DIDComm")
+Rel(mediator, mobile_app, "4. Push notification", "FCM/APNs")
+Rel(mobile_app, mediator, "5. Poll for messages")
+Rel(mediator, mobile_app, "6. Return proof request")
+
+' Request Processing Phase
+Rel(mobile_app, credo_agent, "7. Process proof request")
+Rel(credo_agent, indy_sdk, "8. Fetch schemas & cred defs")
+Rel(indy_sdk, ledger, "9. Query ledger", "Indy protocol")
+Rel(ledger, indy_sdk, "10. Return metadata")
+
+' Credential Selection Phase
+Rel(credo_agent, credo_agent, "11. Search matching credentials (check restrictions)")
+Rel(credo_agent, mobile_app, "12. Return matching credentials")
+
+Rel(mobile_app, user, "13. Display proof request (show required attributes and predicates)")
+Rel(user, mobile_app, "14. Select credentials and confirm")
+
+' ZK Proof Generation Phase
+Rel(mobile_app, credo_agent, "15. Generate proof")
+Rel(credo_agent, indy_sdk, "16. Generate ZK proof with AnonCreds (selective disclosure + predicates)")
+
+Rel(indy_sdk, ledger, "17. Fetch revocation registry if needed")
+Rel(ledger, indy_sdk, "18. Return rev reg")
+
+Rel(indy_sdk, credo_agent, "19. ZK proof ready")
+Rel(credo_agent, credo_agent, "20. Pack DIDComm message (encrypt with verifier's key)")
+
+' Proof Presentation Phase
+Rel(credo_agent, verifier, "21. Send proof presentation", "DIDComm")
+
+' Verification Phase
+Rel(verifier, ledger, "22. Fetch public keys")
+Rel(ledger, verifier, "23. Return keys")
+Rel(verifier, ledger, "24. Check revocation status")
+Rel(ledger, verifier, "25. Return status")
+
+Rel(verifier, verifier, "26. Verify proof: Check signature, Verify predicates, Check revocation")
+
+' Success Path
+Rel(verifier, user, "27. Grant access (if valid)")
+Rel(verifier, credo_agent, "28. Send acknowledgment", "DIDComm")
+Rel(credo_agent, mobile_app, "29. Verification result")
+Rel(mobile_app, user, "30. Show result (success or error)")
+
+SHOW_LEGEND()
+
+@enduml

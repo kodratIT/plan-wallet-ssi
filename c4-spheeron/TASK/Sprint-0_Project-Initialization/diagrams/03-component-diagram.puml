@@ -1,0 +1,170 @@
+@startuml Sphereon SSI Wallet - Component Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram - React Native Application Internal Structure
+
+Container_Boundary(ui_layer, "UI Layer") {
+    Component(screens, "Screens", "React Components", "Auth, Credentials, Connections\nSettings, Onboarding")
+    Component(navigation, "Navigation", "React Navigation", "Stack, Tab, Drawer navigators\nDeep linking")
+    Component(ui_components, "UI Components", "React Native Paper", "Buttons, Cards, Lists\nForm inputs, Modals")
+}
+
+Container_Boundary(state_layer, "State Management") {
+    Component(auth_context, "Auth Context", "React Context", "User authentication state\nPIN, biometric status")
+    Component(wallet_context, "Wallet Context", "React Context", "Wallet state, DID\nActive connections")
+    Component(credential_context, "Credential Context", "React Context", "Credentials list\nSelected credential")
+}
+
+Container_Boundary(hooks_layer, "Custom Hooks") {
+    Component(use_credentials, "useCredentials", "Custom Hook", "CRUD operations\nfor credentials")
+    Component(use_connections, "useConnections", "Custom Hook", "Connection management")
+    Component(use_biometric, "useBiometric", "Custom Hook", "Biometric auth logic")
+    Component(use_qr_scanner, "useQRScanner", "Custom Hook", "QR code scanning logic")
+}
+
+Container_Boundary(service_layer, "Service Layer") {
+    Component(credential_service, "Credential Service", "TypeScript", "Issue, store, retrieve\nverify credentials")
+    Component(did_service, "DID Service", "TypeScript", "Create, resolve, manage DIDs")
+    Component(oid4vci_service, "OID4VCI Service", "TypeScript", "OpenID4VCI protocol\ncredential request flow")
+    Component(oid4vp_service, "OID4VP Service", "TypeScript", "OpenID4VP protocol\nproof presentation flow")
+    Component(didcomm_service, "DIDComm Service", "TypeScript", "DIDComm v2 messaging\nmediation")
+    Component(presentation_service, "Presentation Service", "TypeScript", "Presentation Exchange\nselective disclosure")
+}
+
+Container_Boundary(storage_layer, "Storage Layer") {
+    Component(secure_storage_service, "Secure Storage Service", "TypeScript", "Wrapper for expo-secure-store\nkey management")
+    Component(database_service, "Database Service", "TypeScript", "Wrapper for AsyncStorage\nCRUD operations")
+    Component(backup_service, "Backup Service", "TypeScript", "Backup/restore logic\ncloud sync")
+}
+
+Container_Boundary(utility_layer, "Utilities") {
+    Component(crypto_utils, "Crypto Utils", "TypeScript", "Hashing, encryption\nkey derivation")
+    Component(validation_utils, "Validation Utils", "TypeScript", "Input validation\nschema validation")
+    Component(logger, "Logger", "TypeScript", "Centralized logging\nerror tracking")
+    Component(error_handler, "Error Handler", "TypeScript", "Global error handling\nuser-friendly messages")
+}
+
+Component(ssi_sdk, "Sphereon SSI-SDK", "External Library", "@sphereon/ssi-sdk-*")
+
+' UI Layer relationships
+Rel(screens, navigation, "Uses", "Navigate between screens")
+Rel(screens, ui_components, "Uses", "Render UI")
+Rel(screens, auth_context, "Consumes", "Auth state")
+Rel(screens, wallet_context, "Consumes", "Wallet state")
+Rel(screens, credential_context, "Consumes", "Credential state")
+Rel(screens, use_credentials, "Uses", "Credential operations")
+Rel(screens, use_connections, "Uses", "Connection operations")
+Rel(screens, use_biometric, "Uses", "Biometric auth")
+Rel(screens, use_qr_scanner, "Uses", "Scan QR")
+
+' Hooks relationships
+Rel(use_credentials, credential_service, "Calls", "Service methods")
+Rel(use_connections, didcomm_service, "Calls", "DIDComm ops")
+Rel(use_biometric, secure_storage_service, "Calls", "Store auth data")
+Rel(use_qr_scanner, oid4vci_service, "Calls", "Process invitation")
+
+' Service Layer relationships
+Rel(credential_service, ssi_sdk, "Uses", "Credential operations")
+Rel(did_service, ssi_sdk, "Uses", "DID operations")
+Rel(oid4vci_service, ssi_sdk, "Uses", "OID4VCI protocol")
+Rel(oid4vp_service, ssi_sdk, "Uses", "OID4VP protocol")
+Rel(didcomm_service, ssi_sdk, "Uses", "DIDComm messaging")
+Rel(presentation_service, ssi_sdk, "Uses", "Presentation Exchange")
+
+Rel(credential_service, database_service, "Uses", "Store credentials")
+Rel(did_service, secure_storage_service, "Uses", "Store keys")
+Rel(credential_service, crypto_utils, "Uses", "Encrypt data")
+Rel(didcomm_service, database_service, "Uses", "Store messages")
+
+' Storage relationships
+Rel(secure_storage_service, logger, "Uses", "Log operations")
+Rel(database_service, logger, "Uses", "Log operations")
+Rel(backup_service, secure_storage_service, "Uses", "Backup keys")
+Rel(backup_service, database_service, "Uses", "Backup data")
+
+' Utilities
+Rel(credential_service, validation_utils, "Uses", "Validate")
+Rel(credential_service, logger, "Uses", "Log")
+Rel(credential_service, error_handler, "Uses", "Handle errors")
+
+note right of screens
+  **Struktur Layar:**
+  src/screens/
+  ├── auth/
+  │   ├── LoginScreen.tsx
+  │   ├── SetupPINScreen.tsx
+  │   └── BiometricSetupScreen.tsx
+  ├── credentials/
+  │   ├── CredentialsListScreen.tsx
+  │   ├── CredentialDetailScreen.tsx
+  │   └── ReceiveCredentialScreen.tsx
+  ├── connections/
+  │   ├── ConnectionsListScreen.tsx
+  │   └── ConnectionDetailScreen.tsx
+  ├── settings/
+  │   └── SettingsScreen.tsx
+  └── onboarding/
+      └── OnboardingScreen.tsx
+  
+  **Sprint 0: Buat struktur folder**
+end note
+
+note left of service_layer
+  **Struktur Service:**
+  src/services/
+  ├── ssi/
+  │   ├── CredentialService.ts
+  │   ├── DIDService.ts
+  │   ├── OID4VCIService.ts
+  │   ├── OID4VPService.ts
+  │   ├── DIDCommService.ts
+  │   └── PresentationService.ts
+  ├── storage/
+  │   ├── SecureStorage.ts
+  │   ├── Database.ts
+  │   └── BackupService.ts
+  └── network/
+      └── ApiClient.ts
+  
+  **Sprint 0: Buat interface service**
+  **Sprint 1+: Implementasi services**
+end note
+
+note bottom of ssi_sdk
+  **Penggunaan SSI-SDK:**
+  Library ini menyediakan:
+  • Penerbitan credential (OID4VCI)
+  • Presentasi credential (OID4VP)
+  • Resolusi & manajemen DID
+  • Operasi Verifiable Credential
+  • Presentation Exchange
+  • Messaging DIDComm v2
+  
+  **Sprint 0: Install dependencies saja**
+  **Integrasi dimulai dari Sprint 1**
+end note
+
+note top of hooks_layer
+  **Pola Custom Hooks:**
+  Mengenkapsulasi logika bisnis
+  Reusable antar komponen
+  Mengelola state lokal & side effects
+  
+  Contoh: useCredentials()
+  ```typescript
+  const {
+    credentials,
+    loading,
+    error,
+    addCredential,
+    deleteCredential,
+    getCredentialById
+  } = useCredentials();
+  ```
+  
+  **Sprint 0: Buat interface hooks**
+end note
+
+@enduml

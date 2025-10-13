@@ -1,0 +1,772 @@
+@startuml 05-seq-didcomm-present-proof
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title DIDComm Present Proof Flow\n**Aries Present Proof Protocol 2.0 with Zero-Knowledge Proofs**
+
+actor "User\n(Holder)" as User
+participant "Mobile\nWallet UI" as WalletUI
+participant "DIDComm\nHandler" as DIDCommHandler
+participant "Presentation\nEngine" as PresEngine
+participant "Credential\nStore" as CredStore
+participant "AnonCreds\nEngine" as AnonCreds
+participant "Key\nManager" as KeyMgr
+participant "DIDComm\nMediator" as Mediator
+participant "Push\nNotification\nService" as PushSvc
+participant "Verifier\nAgent" as Verifier
+
+== Prerequisite: Connection Already Established ==
+
+note over User, Verifier
+  **Context:**
+  Connection established via SD-06
+  
+  Verifier wants to verify holder's credentials
+  with privacy-preserving ZKPs (Zero-Knowledge Proofs)
+  
+  AnonCreds format used for predicates
+  (prove age >= 18 without revealing age)
+end note
+
+== 1. Verifier Sends Proof Request ==
+
+Verifier -> Verifier: Decide what to verify
+activate Verifier
+
+Verifier -> Verifier: Retrieve connection with holder
+Verifier -> Verifier: Build proof request
+
+note right of Verifier
+  **Request Presentation Message (RFC 0454):**
+  {
+    "@type": "https://didcomm.org/present-proof/2.0/request-presentation",
+    "@id": "uuid-request-123",
+    "~thread": {},
+    "comment": "Employment verification required",
+    "formats": [{
+      "attach_id": "indy-proof-req",
+      "format": "hlindy/proof-req@v2.0"
+    }],
+    "request_presentations~attach": [{
+      "@id": "indy-proof-req",
+      "mime-type": "application/json",
+      "data": {
+        "json": {
+          "name": "Employment Verification",
+          "version": "1.0",
+          "nonce": "1234567890",
+          "requested_attributes": {
+            "attr1_referent": {
+              "name": "employment_status",
+              "restrictions": [{
+                "schema_id": "7KuDTpQh3GJ7Gp6kErpWvM:2:employment:1.0",
+                "issuer_did": "did:indy:sovrin:7KuDTpQh3GJ7Gp6kErpWvM"
+              }]
+            },
+            "attr2_referent": {
+              "name": "company_name",
+              "restrictions": [...]
+            }
+          },
+          "requested_predicates": {
+            "pred1_referent": {
+              "name": "employment_start_date",
+              "p_type": "<=",
+              "p_value": 20220101,
+              "restrictions": [...]
+            },
+            "pred2_referent": {
+              "name": "age",
+              "p_type": ">=",
+              "p_value": 18,
+              "restrictions": [...]
+            }
+          }
+        }
+      }
+    }]
+  }
+end note
+
+Verifier -> Verifier: Set requested attributes:\n- employment_status\n- company_name
+Verifier -> Verifier: Set requested predicates:\n- employment_start_date <= 2022-01-01\n- age >= 18 (ZKP!)
+Verifier -> Verifier: Set restrictions (schema, issuer)
+Verifier -> Verifier: Generate nonce (replay protection)
+
+Verifier -> Verifier: Pack message (authcrypt)
+
+Verifier -> Mediator: POST to holder's mediator
+activate Mediator
+
+Mediator -> Mediator: Store in holder's inbox
+Mediator -> PushSvc: Send push notification
+activate PushSvc
+PushSvc -> WalletUI: 📬 Proof Request from Employer
+deactivate PushSvc
+
+Mediator --> Verifier: 202 Accepted
+deactivate Mediator
+
+Verifier -> Verifier: Mark request as sent
+deactivate Verifier
+
+== 2. User Opens App ==
+
+User -> WalletUI: Tap notification
+activate WalletUI
+
+WalletUI -> DIDCommHandler: checkNewMessages()
+activate DIDCommHandler
+
+DIDCommHandler -> Mediator: Batch message pickup
+activate Mediator
+Mediator --> DIDCommHandler: Messages
+deactivate Mediator
+
+DIDCommHandler -> KeyMgr: Unpack messages
+activate KeyMgr
+KeyMgr -> KeyMgr: Decrypt & verify
+KeyMgr --> DIDCommHandler: Plaintext messages
+deactivate KeyMgr
+
+DIDCommHandler -> DIDCommHandler: Parse messages
+DIDCommHandler -> DIDCommHandler: Type: request-presentation
+
+== 3. Parse Proof Request ==
+
+DIDCommHandler -> PresEngine: parsePresentationRequest(request)
+activate PresEngine
+
+PresEngine -> PresEngine: Extract message details
+PresEngine -> PresEngine: Identify format: AnonCreds/Indy
+
+note right of PresEngine
+  **Proof Request Structure:**
+  - Requested attributes (revealed)
+  - Requested predicates (ZKP)
+  - Restrictions (issuer, schema)
+  - Nonce (freshness)
+  
+  Example predicates:
+  - age >= 18
+  - salary > 50000
+  - date <= 2022-01-01
+end note
+
+PresEngine -> PresEngine: Parse requested_attributes
+loop For each attribute
+  PresEngine -> PresEngine: Extract:\n- Attribute name\n- Restrictions (issuer, schema)
+  PresEngine -> PresEngine: Store attribute requirement
+end
+
+PresEngine -> PresEngine: Parse requested_predicates
+loop For each predicate
+  PresEngine -> PresEngine: Extract:\n- Attribute name\n- Predicate type (>=, >, <=, <)\n- Predicate value\n- Restrictions
+  PresEngine -> PresEngine: Store predicate requirement
+end
+
+PresEngine -> PresEngine: Extract nonce (for freshness)
+
+PresEngine --> DIDCommHandler: Request parsed
+deactivate PresEngine
+
+DIDCommHandler --> WalletUI: Proof request received
+deactivate DIDCommHandler
+
+== 4. Display Proof Request to User ==
+
+WalletUI -> User: 📋 Proof Request\n\nFrom: ACME Corp (Employer)\n\nRequesting:\n\n**Attributes to reveal:**\n• Employment Status\n• Company Name\n\n**Proof without revealing:**\n• Employed since before 2022\n• Age at least 18\n\nYou will NOT reveal:\n• Your exact age\n• Your exact start date\n\nAccept request?
+
+note left of User
+  **Zero-Knowledge Proofs:**
+  
+  Traditional proof:
+  "I'm 25 years old" (reveals 25)
+  
+  ZKP proof:
+  "I'm at least 18" (doesn't reveal 25)
+  
+  Verifier learns ONLY:
+  ✓ age >= 18 is TRUE
+  ✗ Actual age is hidden
+  
+  Privacy-preserving!
+end note
+
+User -> User: Review request
+
+alt User declines
+  User -> WalletUI: Decline
+  WalletUI -> DIDCommHandler: rejectProofRequest(request_id)
+  activate DIDCommHandler
+  DIDCommHandler -> DIDCommHandler: Send problem-report
+  DIDCommHandler --> WalletUI: Request declined
+  deactivate DIDCommHandler
+  WalletUI -> User: Request declined
+  deactivate WalletUI
+  [<-- User
+end
+
+User -> WalletUI: Accept request
+
+== 5. Find Matching Credentials ==
+
+WalletUI -> PresEngine: findMatchingCredentials(request)
+activate PresEngine
+
+PresEngine -> CredStore: queryCredentials()
+activate CredStore
+CredStore -> CredStore: Fetch all credentials from DB
+CredStore --> PresEngine: List of credentials
+deactivate CredStore
+
+note right of PresEngine
+  **Credential Matching:**
+  For each requested attribute/predicate:
+  1. Find credentials containing that attribute
+  2. Check issuer restriction (if specified)
+  3. Check schema restriction (if specified)
+  4. Check credential is AnonCreds format
+  5. Check credential is not revoked
+  6. Check credential is not expired
+end note
+
+loop For each requested attribute
+  PresEngine -> PresEngine: Get attribute name & restrictions
+  
+  loop For each credential
+    PresEngine -> PresEngine: Check credential format (AnonCreds)
+    PresEngine -> PresEngine: Check has attribute
+    PresEngine -> PresEngine: Check issuer matches restriction
+    PresEngine -> PresEngine: Check schema matches restriction
+    
+    alt Credential matches
+      PresEngine -> PresEngine: Add to matches for this attribute
+    end
+  end
+  
+  alt No matching credentials
+    PresEngine --> WalletUI: Cannot fulfill request
+    WalletUI -> User: You don't have required credentials
+    deactivate PresEngine
+    deactivate WalletUI
+    [<-- User
+  end
+end
+
+loop For each requested predicate
+  PresEngine -> PresEngine: Get predicate (age >= 18)
+  
+  loop For each credential
+    PresEngine -> PresEngine: Check has attribute "age"
+    PresEngine -> PresEngine: Check issuer/schema restrictions
+    PresEngine -> PresEngine: Extract attribute value
+    PresEngine -> PresEngine: Check predicate can be satisfied
+    
+    note right of PresEngine
+      **Predicate Check:**
+      If age attribute = 25
+      Predicate: age >= 18
+      
+      25 >= 18? YES ✓
+      
+      Can generate ZKP for this
+    end note
+    
+    alt Credential satisfies predicate
+      PresEngine -> PresEngine: Add to matches
+    end
+  end
+end
+
+PresEngine -> PresEngine: Group matches by referent
+PresEngine --> WalletUI: Matched credentials map
+deactivate PresEngine
+
+== 6. User Selects Credentials ==
+
+WalletUI -> User: Select credentials to use:\n\n**For employment_status:**\n☐ ACME Employee ID (issued 2021-05-15)\n☐ Previous Employer ID\n\n**For age >= 18:**\n☐ Driver's License (age: 25)\n☐ National ID (age: 25)\n\nRecommended: ACME Employee ID + Driver's License
+
+User -> WalletUI: Select ACME Employee ID
+User -> WalletUI: Select Driver's License
+
+WalletUI -> User: Confirm selection?
+User -> WalletUI: Confirm
+
+== 7. Retrieve Credential Details ==
+
+WalletUI -> PresEngine: generatePresentation(selections, request)
+activate PresEngine
+
+PresEngine -> CredStore: getCredential(acme_emp_id)
+activate CredStore
+CredStore -> CredStore: Fetch from database
+CredStore -> CredStore: Decrypt credential
+CredStore --> PresEngine: ACME Employee credential
+deactivate CredStore
+
+PresEngine -> CredStore: getCredential(drivers_license_id)
+activate CredStore
+CredStore --> PresEngine: Driver's License credential
+deactivate CredStore
+
+PresEngine -> PresEngine: Parse AnonCreds credentials
+
+note right of PresEngine
+  **AnonCreds Credential Structure:**
+  {
+    "schema_id": "...",
+    "cred_def_id": "...",
+    "rev_reg_id": "...",
+    "values": {
+      "employment_status": {
+        "raw": "Full-time",
+        "encoded": "594739483..."
+      },
+      "company_name": {
+        "raw": "ACME Corp",
+        "encoded": "384759203..."
+      },
+      "employment_start_date": {
+        "raw": "20210515",
+        "encoded": "20210515"
+      }
+    },
+    "signature": {...},
+    "signature_correctness_proof": {...},
+    "rev_reg": {...}
+  }
+end note
+
+PresEngine -> PresEngine: Extract attribute values
+PresEngine -> PresEngine: Extract credential signatures
+PresEngine -> PresEngine: Extract credential secrets (blinded values)
+
+== 8. Fetch Credential Definitions & Revocation ==
+
+PresEngine -> PresEngine: Extract cred_def_id from credentials
+
+PresEngine -> PresEngine: Fetch credential definition\nfrom ledger/cache
+
+note right of PresEngine
+  **Credential Definition:**
+  Contains issuer's public key
+  for signature verification
+  
+  Needed for:
+  - Verifying credential signature
+  - Generating proofs
+end note
+
+PresEngine -> PresEngine: Extract rev_reg_id (if revocable)
+
+PresEngine -> PresEngine: Fetch revocation registry\nstate from ledger
+
+note right of PresEngine
+  **Revocation Registry:**
+  Cryptographic accumulator
+  
+  Proves credential is NOT revoked
+  without revealing which credential
+  (ZKP for non-revocation)
+end note
+
+PresEngine -> PresEngine: Get revocation tails file
+
+== 9. Generate Zero-Knowledge Proofs ==
+
+PresEngine -> AnonCreds: generateProof(credentials, request, cred_defs, rev_regs)
+activate AnonCreds
+
+note right of AnonCreds
+  **AnonCreds ZKP Generation:**
+  
+  Uses CL (Camenisch-Lysyanskaya) signatures
+  
+  Can prove:
+  - Possession of credential
+  - Attribute values (revealed)
+  - Predicates (without revealing value)
+  - Non-revocation
+  
+  All without revealing:
+  - Full credential
+  - Issuer's signature
+  - Link between presentations
+end note
+
+AnonCreds -> AnonCreds: Initialize proof builder
+
+loop For each requested attribute (revealed)
+  AnonCreds -> AnonCreds: Get attribute value from credential
+  AnonCreds -> AnonCreds: Get encoded value
+  AnonCreds -> AnonCreds: Add to revealed attributes
+  
+  note right of AnonCreds
+    **Revealed Attribute:**
+    "employment_status": "Full-time"
+    
+    This will be shown in proof
+  end note
+end
+
+loop For each requested predicate (ZKP)
+  AnonCreds -> AnonCreds: Get attribute value (e.g., age = 25)
+  AnonCreds -> AnonCreds: Get predicate (age >= 18)
+  AnonCreds -> AnonCreds: Check predicate: 25 >= 18? TRUE
+  
+  note right of AnonCreds
+    **Generate ZKP:**
+    
+    Prove: age >= 18 is TRUE
+    Without revealing: age = 25
+    
+    Uses range proof:
+    - Prove value is in range [18, infinity)
+    - Without revealing actual value
+    - Verifier can check proof validity
+    - But learns nothing about actual age
+    
+    Mathematical magic! 🎩✨
+  end note
+  
+  AnonCreds -> AnonCreds: Generate range proof (ZKP)
+  AnonCreds -> AnonCreds: Add to proof predicates
+end
+
+AnonCreds -> AnonCreds: Generate proof of possession\n(have valid credential)
+
+AnonCreds -> AnonCreds: Generate blinded signature proof
+note right of AnonCreds
+  **Signature Proof:**
+  Proves credential was signed by issuer
+  Without revealing signature itself
+  
+  Verifier can verify proof
+  against issuer's public key
+  (from credential definition)
+end note
+
+alt Credential is revocable
+  AnonCreds -> AnonCreds: Generate non-revocation proof
+  
+  note right of AnonCreds
+    **Non-Revocation Proof:**
+    
+    Proves credential is in
+    revocation accumulator
+    (i.e., NOT revoked)
+    
+    Without revealing:
+    - Which credential
+    - Credential index
+    
+    Uses cryptographic accumulator
+    witness + tails file
+  end note
+  
+  AnonCreds -> AnonCreds: Get accumulator witness
+  AnonCreds -> AnonCreds: Use tails file
+  AnonCreds -> AnonCreds: Generate witness proof
+  AnonCreds -> AnonCreds: Add to proof
+end
+
+AnonCreds -> AnonEngine: Combine all sub-proofs
+
+AnonCreds --> PresEngine: AnonCreds proof
+deactivate AnonCreds
+
+note right of AnonCreds
+  **Generated Proof Structure:**
+  {
+    "proof": {
+      "proofs": [{
+        "primary_proof": {...},
+        "non_revoc_proof": {...}
+      }],
+      "aggregated_proof": {...}
+    },
+    "requested_proof": {
+      "revealed_attrs": {
+        "attr1_referent": {
+          "sub_proof_index": 0,
+          "raw": "Full-time",
+          "encoded": "594739483..."
+        }
+      },
+      "self_attested_attrs": {},
+      "unrevealed_attrs": {},
+      "predicates": {
+        "pred1_referent": {
+          "sub_proof_index": 0
+        }
+      }
+    },
+    "identifiers": [{
+      "schema_id": "...",
+      "cred_def_id": "...",
+      "rev_reg_id": "...",
+      "timestamp": 1642435200
+    }]
+  }
+end note
+
+== 10. Build Presentation Message ==
+
+PresEngine -> PresEngine: Create presentation message
+
+note right of PresEngine
+  **Presentation Message (RFC 0454):**
+  {
+    "@type": "https://didcomm.org/present-proof/2.0/presentation",
+    "@id": "uuid-pres-456",
+    "~thread": {
+      "thid": "uuid-request-123"
+    },
+    "comment": "Employment verification proof",
+    "formats": [{
+      "attach_id": "indy-proof",
+      "format": "hlindy/proof@v2.0"
+    }],
+    "presentations~attach": [{
+      "@id": "indy-proof",
+      "mime-type": "application/json",
+      "data": {
+        "json": <anoncreds_proof>
+      }
+    }]
+  }
+end note
+
+PresEngine -> PresEngine: Set message type: presentation
+PresEngine -> PresEngine: Set thread ID (from request)
+PresEngine -> PresEngine: Attach AnonCreds proof
+PresEngine -> PresEngine: Add comment
+
+PresEngine --> WalletUI: Presentation ready
+deactivate PresEngine
+
+== 11. Send Presentation ==
+
+WalletUI -> DIDCommHandler: sendPresentation(presentation)
+activate DIDCommHandler
+
+DIDCommHandler -> KeyMgr: authcryptMessage(presentation)
+activate KeyMgr
+KeyMgr -> KeyMgr: Encrypt & authenticate
+KeyMgr --> DIDCommHandler: Packed message
+deactivate KeyMgr
+
+DIDCommHandler -> Verifier: POST to verifier\n(encrypted presentation)
+activate Verifier
+
+WalletUI -> User: Sending proof...
+
+Verifier -> Verifier: Receive encrypted message
+Verifier -> Verifier: Unpack (authcrypt)
+Verifier -> Verifier: Parse presentation message
+Verifier -> Verifier: Extract AnonCreds proof
+
+== 12. Verifier Validates Proof ==
+
+Verifier -> Verifier: Validate thread ID matches request
+Verifier -> Verifier: Extract proof from attachment
+
+Verifier -> Verifier: Fetch credential definitions\n(issuer public keys)
+Verifier -> Verifier: Fetch revocation registries\n(current state)
+
+Verifier -> Verifier: Verify AnonCreds proof
+
+note right of Verifier
+  **Proof Verification:**
+  
+  1. Check revealed attributes present
+  2. Verify signature proofs (CL signatures)
+  3. Verify predicate proofs (range proofs)
+  4. Verify non-revocation proofs
+  5. Check nonce matches
+  6. Validate against restrictions
+  7. Check timestamp fresh
+  
+  Uses issuer's public key from cred def
+  Uses accumulator from rev reg
+end note
+
+Verifier -> Verifier: Verify signature proofs
+note right of Verifier
+  **Signature Verification:**
+  Check proof against issuer public key
+  from credential definition
+  
+  Proves credential was issued by
+  trusted issuer
+end note
+
+Verifier -> Verifier: Verify predicate proofs
+note right of Verifier
+  **Predicate Verification:**
+  
+  Predicate: age >= 18
+  Proof: <ZKP_data>
+  
+  Verifier checks:
+  ✓ Range proof is valid
+  ✓ Predicate is satisfied
+  
+  Verifier learns:
+  ✓ age >= 18 is TRUE
+  
+  Verifier does NOT learn:
+  ✗ Actual age value
+  
+  Privacy preserved! 🔒
+end note
+
+alt Invalid proof
+  Verifier -> Verifier: Proof verification failed
+  Verifier --> DIDCommHandler: Problem report
+  DIDCommHandler --> WalletUI: Verification failed
+  WalletUI -> User: ❌ Proof rejected
+  deactivate Verifier
+  deactivate DIDCommHandler
+  deactivate WalletUI
+  [<-- User
+end
+
+Verifier -> Verifier: Verify non-revocation proofs
+note right of Verifier
+  **Non-Revocation Check:**
+  Proof shows credential is in accumulator
+  = NOT revoked
+  
+  Without revealing which credential
+end note
+
+Verifier -> Verifier: Check revealed attributes
+Verifier -> Verifier: - employment_status: "Full-time" ✓
+Verifier -> Verifier: - company_name: "ACME Corp" ✓
+
+Verifier -> Verifier: Check predicates satisfied
+Verifier -> Verifier: - employment_start_date <= 2022-01-01 ✓
+Verifier -> Verifier: - age >= 18 ✓
+
+Verifier -> Verifier: Validate issuer is trusted
+Verifier -> Verifier: Check credential definition from\nauthorized issuer
+
+Verifier -> Verifier: All checks passed! ✓
+
+Verifier -> Verifier: Business logic:\nGrant access/approve request
+
+== 13. Verifier Sends Acknowledgment ==
+
+Verifier -> Verifier: Create ack message
+
+note right of Verifier
+  **Ack Message:**
+  {
+    "@type": "https://didcomm.org/notification/1.0/ack",
+    "@id": "uuid-ack-789",
+    "~thread": {
+      "thid": "uuid-request-123"
+    },
+    "status": "OK"
+  }
+end note
+
+Verifier -> Verifier: Pack message (authcrypt)
+
+Verifier -> Mediator: POST to holder's mediator
+activate Mediator
+Mediator -> Mediator: Store in inbox
+Mediator -> PushSvc: Push notification
+activate PushSvc
+PushSvc -> WalletUI: ✓ Proof verified
+deactivate PushSvc
+Mediator --> Verifier: 202 Accepted
+deactivate Mediator
+
+Verifier -> Verifier: Update protocol state: complete
+Verifier --> DIDCommHandler: 202 Accepted
+deactivate Verifier
+
+DIDCommHandler --> WalletUI: Presentation sent
+deactivate DIDCommHandler
+
+== 14. Wallet Receives Confirmation ==
+
+WalletUI -> User: ✓ Proof Accepted!\n\nEmployer verified your:\n✓ Employment status\n✓ Company name\n✓ Employed since before 2022\n✓ Age at least 18\n\nWithout revealing:\n• Your exact age\n• Your exact start date\n\nAccess granted!
+
+note left of User
+  **Privacy Preserved:**
+  
+  What verifier learned:
+  ✓ Employed full-time at ACME
+  ✓ Started before 2022
+  ✓ At least 18 years old
+  
+  What verifier did NOT learn:
+  ✗ Exact age (25)
+  ✗ Exact start date (2021-05-15)
+  ✗ Other credential attributes
+  ✗ Full credential contents
+  
+  Perfect selective disclosure
+  with mathematical guarantees!
+end note
+
+== 15. Store Proof History ==
+
+WalletUI -> CredStore: storeProofRecord(proof, verifier, timestamp)
+activate CredStore
+
+CredStore -> CredStore: Store:\n- Verifier info\n- Credentials used\n- Attributes revealed\n- Predicates proved\n- Timestamp
+
+CredStore --> WalletUI: History stored
+deactivate CredStore
+
+WalletUI -> User: Return to home
+deactivate WalletUI
+
+note over User, Verifier
+  **DIDComm Present Proof Complete!**
+  
+  **Protocol Flow:**
+  1. Verifier sends proof request (attributes + predicates)
+  2. Holder receives via mediator (push notification)
+  3. Holder finds matching credentials
+  4. Holder selects credentials
+  5. Holder generates ZK proofs (AnonCreds)
+  6. Holder sends presentation
+  7. Verifier validates proofs
+  8. Verifier sends acknowledgment
+  
+  **Zero-Knowledge Proofs (ZKP):**
+  ✓ Predicates without revealing values
+  ✓ Selective disclosure (only requested attrs)
+  ✓ Unlinkability (can't correlate presentations)
+  ✓ Non-revocation proofs
+  ✓ Signature proofs
+  
+  **Privacy Features:**
+  ✓ Minimal disclosure (only what's needed)
+  ✓ Mathematical guarantees (not just promises)
+  ✓ No correlation between proofs
+  ✓ No tracking by verifiers
+  
+  **AnonCreds Advantages:**
+  ✓ True ZKP support (CL signatures)
+  ✓ Predicate proofs (age >= 18, salary > X)
+  ✓ Non-revocation proofs
+  ✓ Strong privacy guarantees
+  ✓ Production-ready (Hyperledger Indy)
+  
+  **Use Cases:**
+  - Age verification (>= 18, >= 21)
+  - Income verification (> threshold)
+  - Date verification (employed before X)
+  - Status checks (is_student = true)
+  - All without revealing exact values!
+end note
+
+@enduml

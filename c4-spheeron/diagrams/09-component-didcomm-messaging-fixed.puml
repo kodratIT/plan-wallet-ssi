@@ -1,0 +1,96 @@
+@startuml Sphereon Wallet - DIDComm v2 Messaging Engine
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: DIDComm v2 Messaging Engine\n[Secure Peer-to-Peer Messaging with Encryption and Routing]
+
+Container_Boundary(didcomm_engine, "DIDComm v2 Messaging Engine") {
+    
+    Component(didcomm_orchestrator, "DIDComm Orchestrator", "Main Controller", "Coordinate messaging: send/receive messages, pack/unpack, route, establish connections, manage state")
+    
+    Container_Boundary(message_structure, "Message Structure Components") {
+        Component(message_builder, "Message Builder", "Message Constructor", "Build DIDComm v2 messages: id, type, body, from/to, threading, attachments")
+        
+        Component(attachment_handler, "Attachment Handler", "Attachment Manager", "Handle message attachments: credentials, presentations, images, documents with JWS/base64/JSON")
+        
+        Component(thread_manager, "Thread Manager", "Conversation Tracking", "Manage message threads with thid/pthid hierarchy, track conversations, state management")
+    }
+    
+    Container_Boundary(encryption, "Message Encryption System") {
+        Component(message_packer, "Message Packer", "Encryption Orchestrator", "Pack messages: authcrypt, anoncrypt, signed, plaintext formats")
+        
+        Component(authcrypt_handler, "Authcrypt Handler", "Authenticated Encryption", "Authenticated + encrypted messaging with sender identity, ECDH-ES+A256KW, AES-256-GCM")
+        
+        Component(anoncrypt_handler, "Anoncrypt Handler", "Anonymous Encryption", "Anonymous encryption with ephemeral keys, sender hidden, privacy-preserving")
+        
+        Component(message_unpacker, "Message Unpacker", "Decryption Orchestrator", "Unpack encrypted/signed messages, verify signatures, return message + metadata")
+    }
+    
+    Container_Boundary(routing, "Message Routing System") {
+        Component(route_manager, "Route Manager", "Routing Coordinator", "Resolve routes: direct delivery, mediated delivery, multi-hop routing")
+        
+        Component(mediator_client, "Mediator Client", "Mediation Protocol", "Coordinate Mediation Protocol (RFC 0211): setup, key update, message pickup, live delivery")
+        
+        Component(forward_handler, "Forward Message Handler", "Message Forwarding", "Handle forward messages for routing through mediators, multi-hop wrapping")
+    }
+    
+    Container_Boundary(transport, "Transport Layer") {
+        Component(http_transport, "HTTP Transport", "HTTP/HTTPS Delivery", "Send/receive via HTTP POST with TLS, standard status codes")
+        
+        Component(websocket_transport, "WebSocket Transport", "Real-time Delivery", "Live message delivery via WebSocket, bidirectional, push notifications, auto-reconnect")
+        
+        Component(message_queue, "Message Queue", "Outbound Queue", "Queue outbound messages with retry strategy, exponential backoff, max 5 attempts")
+    }
+    
+    Component(protocol_dispatcher, "Protocol Dispatcher", "Message Router", "Route messages to protocol handlers: BasicMessage, TrustPing, IssueCredential, PresentProof")
+}
+
+System_Ext(did_resolver, "DID Resolver", "Resolve DIDs for endpoints/keys")
+System_Ext(kms, "Key Management System", "Signing and encryption keys")
+System_Ext(mediator_service, "DIDComm Mediator", "Message relay for mobile wallets")
+System_Ext(message_storage, "Message Storage", "Store messages")
+System_Ext(connection_storage, "Connection Storage", "Store connections")
+
+Rel(didcomm_orchestrator, message_builder, "Builds messages")
+Rel(didcomm_orchestrator, message_packer, "Packs messages")
+Rel(didcomm_orchestrator, message_unpacker, "Unpacks messages")
+Rel(didcomm_orchestrator, route_manager, "Resolves routes")
+Rel(didcomm_orchestrator, protocol_dispatcher, "Dispatches received")
+Rel(didcomm_orchestrator, message_queue, "Queues outbound")
+
+Rel(message_builder, attachment_handler, "Handles attachments")
+Rel(message_builder, thread_manager, "Manages threads")
+
+Rel(message_packer, authcrypt_handler, "Authcrypt packing")
+Rel(message_packer, anoncrypt_handler, "Anoncrypt packing")
+Rel(message_packer, did_resolver, "Resolves recipient DIDs")
+Rel(message_packer, kms, "Encryption keys")
+
+Rel(authcrypt_handler, kms, "Key agreement")
+Rel(anoncrypt_handler, kms, "Ephemeral keys")
+
+Rel(message_unpacker, kms, "Decryption keys")
+Rel(message_unpacker, did_resolver, "Resolves sender DIDs")
+
+Rel(route_manager, did_resolver, "Resolves service endpoints")
+Rel(route_manager, forward_handler, "Wraps for routing")
+Rel(route_manager, mediator_client, "Uses mediation")
+
+Rel(mediator_client, http_transport, "Sends to mediator")
+Rel(mediator_client, websocket_transport, "Live delivery")
+Rel(mediator_client, mediator_service, "Mediator protocol")
+
+Rel(message_queue, http_transport, "Sends messages")
+Rel(message_queue, message_storage, "Persists queue")
+
+Rel(http_transport, mediator_service, "HTTP POST")
+Rel(websocket_transport, mediator_service, "WebSocket")
+
+Rel(protocol_dispatcher, connection_storage, "Stores connections")
+Rel(protocol_dispatcher, message_storage, "Stores messages")
+
+SHOW_LEGEND()
+
+@enduml

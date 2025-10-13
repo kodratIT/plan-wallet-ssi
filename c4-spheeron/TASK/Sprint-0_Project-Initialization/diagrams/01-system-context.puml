@@ -1,0 +1,76 @@
+@startuml Sphereon SSI Wallet - System Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System Context Diagram - Sphereon SSI Wallet (React Native + Expo)
+
+Person(user, "Wallet User", "Individual yang menggunakan SSI wallet untuk manage digital credentials")
+
+System_Boundary(mobile_wallet, "Sphereon SSI Mobile Wallet") {
+    System(wallet_app, "SSI Wallet App", "React Native + Expo\n\nMobile application untuk:\n• Store & manage credentials\n• Connect dengan issuers/verifiers\n• Present proofs\n• Manage DIDs")
+}
+
+System_Ext(credential_issuer, "Credential Issuer", "Organisasi yang menerbitkan credentials\n(Universitas, Pemerintah, Perusahaan)\n\nProtokol:\n• OpenID4VCI\n• DIDComm v2")
+
+System_Ext(credential_verifier, "Credential Verifier", "Layanan yang meminta pembuktian\n(Pemberi Kerja, Penyedia Layanan)\n\nProtokol:\n• OpenID4VP\n• DIDComm v2\n• SIOPv2")
+
+System_Ext(did_registry, "DID Registry", "Distributed ledger untuk DIDs\n• ION (Bitcoin)\n• Ethereum\n• Web DIDs")
+
+System_Ext(entra_verified_id, "Microsoft Entra\nVerified ID", "Layanan identitas enterprise\nuntuk penerbitan/verifikasi credential")
+
+System_Ext(vdx_platform, "Sphereon VDX\nPlatform", "Platform SSI enterprise\nuntuk manajemen workflow")
+
+System_Ext(ebsi, "EBSI", "European Blockchain\nServices Infrastructure\nuntuk identitas digital EU")
+
+System_Ext(mediator, "DIDComm Mediator", "Layanan routing pesan\nuntuk pengiriman pesan offline")
+
+System_Ext(cloud_storage, "Cloud Storage", "iCloud / Google Drive\nuntuk backup terenkripsi")
+
+Rel(user, wallet_app, "Menggunakan", "Aplikasi mobile\niOS/Android")
+
+Rel(wallet_app, credential_issuer, "Menerima credentials", "HTTPS\nOpenID4VCI, DIDComm")
+Rel(wallet_app, credential_verifier, "Menampilkan bukti", "HTTPS\nOpenID4VP, DIDComm")
+Rel(wallet_app, did_registry, "Resolve DIDs", "HTTPS\nResolusi DID")
+Rel(wallet_app, mediator, "Routing pesan", "HTTPS/WebSocket\nDIDComm v2")
+Rel(wallet_app, cloud_storage, "Backup/Restore", "Native APIs\nTerenkripsi")
+
+Rel(wallet_app, entra_verified_id, "Credential enterprise", "HTTPS\nEntra API")
+Rel(wallet_app, vdx_platform, "Integrasi workflow", "HTTPS\nVDX API")
+Rel(wallet_app, ebsi, "Credential EU", "HTTPS\nEBSI API")
+
+Rel(credential_issuer, mediator, "Kirim penawaran credential", "HTTPS")
+Rel(credential_verifier, mediator, "Kirim permintaan bukti", "HTTPS")
+Rel(mediator, wallet_app, "Kirim pesan", "HTTPS/WebSocket")
+
+note right of wallet_app
+  **Fokus Sprint 0:**
+  Setup environment development
+  Inisialisasi project React Native + Expo
+  Konfigurasi tools & dependencies
+  Buat struktur project dasar
+  
+  **Belum implementasi fitur**
+  Hanya persiapan fondasi
+end note
+
+note left of user
+  **Kemampuan User:**
+  • Simpan verifiable credentials
+  • Buat & kelola koneksi
+  • Tampilkan bukti dengan selective disclosure
+  • Backup & restore wallet
+  • Gunakan autentikasi biometrik
+end note
+
+note bottom of mobile_wallet
+  **Tech Stack:**
+  • React Native 0.73+
+  • Expo SDK 50+
+  • TypeScript 5+
+  • Sphereon SSI-SDK
+  • React Navigation
+  • AsyncStorage / Secure Store
+end note
+
+@enduml

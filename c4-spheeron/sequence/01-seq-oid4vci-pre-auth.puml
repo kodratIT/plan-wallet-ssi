@@ -1,0 +1,457 @@
+@startuml 01-seq-oid4vci-pre-auth
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title OpenID4VCI Pre-Authorized Code Flow\n**Credential Issuance via QR Code**
+
+actor "User\n(Holder)" as User
+participant "Mobile\nWallet UI" as WalletUI
+participant "QR Scanner" as QRScanner
+participant "OID4VCI\nClient" as OID4VCI
+participant "Key\nManager" as KeyMgr
+participant "DID\nManager" as DIDMgr
+participant "DID\nResolver" as DIDResolver
+participant "Credential\nStore" as CredStore
+participant "Issuer\nAuthorization\nServer" as IssuerAS
+participant "Issuer\nCredential\nEndpoint" as IssuerCred
+
+== 1. QR Scan & Parse Credential Offer ==
+
+User -> WalletUI: Scan QR code
+activate WalletUI
+WalletUI -> QRScanner: startScanning()
+activate QRScanner
+QRScanner -> QRScanner: Detect QR code
+QRScanner --> WalletUI: QR URL detected
+deactivate QRScanner
+
+note right of QRScanner
+  **QR URL Format:**
+  openid-credential-offer://?
+  credential_offer_uri=https://issuer.com/offers/abc123
+  
+  OR inline:
+  openid-credential-offer://?
+  credential_offer=<base64_encoded_json>
+end note
+
+WalletUI -> OID4VCI: parseCredentialOffer(url)
+activate OID4VCI
+
+alt credential_offer_uri present
+  OID4VCI -> IssuerAS: GET /offers/abc123
+  activate IssuerAS
+  IssuerAS --> OID4VCI: credential_offer JSON
+  deactivate IssuerAS
+else credential_offer inline
+  OID4VCI -> OID4VCI: Decode base64
+end
+
+OID4VCI -> OID4VCI: Parse JSON
+note right of OID4VCI
+  **Credential Offer Structure:**
+  {
+    "credential_issuer": "https://issuer.com",
+    "credentials": ["UniversityDegreeCredential"],
+    "grants": {
+      "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+        "pre-authorized_code": "eyJhb...",
+        "user_pin_required": true
+      }
+    }
+  }
+end note
+
+OID4VCI -> OID4VCI: Extract:\n- issuer URL\n- credential types\n- pre-auth code\n- PIN required?
+
+== 2. Issuer Discovery & Metadata ==
+
+OID4VCI -> IssuerAS: GET /.well-known/openid-credential-issuer
+activate IssuerAS
+IssuerAS --> OID4VCI: Issuer metadata JSON
+deactivate IssuerAS
+
+note right of IssuerAS
+  **Issuer Metadata:**
+  {
+    "credential_issuer": "https://issuer.com",
+    "credential_endpoint": "https://issuer.com/credential",
+    "credentials_supported": [{
+      "format": "jwt_vc_json",
+      "types": ["VerifiableCredential", "UniversityDegreeCredential"],
+      "cryptographic_binding_methods_supported": ["did"],
+      "credential_signing_alg_values_supported": ["ES256K", "EdDSA"]
+    }],
+    "display": [{
+      "name": "Example University",
+      "locale": "en-US",
+      "logo": {"url": "https://issuer.com/logo.png"}
+    }]
+  }
+end note
+
+OID4VCI -> OID4VCI: Validate metadata
+OID4VCI -> OID4VCI: Check credential type supported
+OID4VCI -> OID4VCI: Extract credential endpoint
+OID4VCI -> OID4VCI: Extract display info
+
+OID4VCI --> WalletUI: Issuer info + credential preview
+deactivate OID4VCI
+
+== 3. User Review & Accept ==
+
+WalletUI -> User: Display credential offer:\n- Issuer name & logo\n- Credential type\n- Attributes preview
+User -> WalletUI: Review offer
+User -> WalletUI: Accept offer
+
+alt User rejects
+  WalletUI -> User: Offer declined
+  WalletUI --> User: Return to home
+  deactivate WalletUI
+  [<-- User
+end
+
+alt PIN required
+  WalletUI -> User: Enter issuer PIN
+  User -> WalletUI: Input PIN
+  note left of User
+    PIN provided by issuer
+    via separate channel
+    (email, SMS, etc.)
+  end note
+end
+
+== 4. Token Request (Pre-Authorized Code) ==
+
+WalletUI -> OID4VCI: requestAccessToken(pre-auth-code, pin)
+activate OID4VCI
+
+OID4VCI -> OID4VCI: Build token request
+note right of OID4VCI
+  **Token Request (POST):**
+  POST https://issuer.com/token
+  Content-Type: application/x-www-form-urlencoded
+  
+  grant_type=urn:ietf:params:oauth:grant-type:pre-authorized_code
+  &pre-authorized_code=eyJhbGc...
+  &user_pin=1234
+end note
+
+OID4VCI -> IssuerAS: POST /token\n(pre-auth code + PIN)
+activate IssuerAS
+
+IssuerAS -> IssuerAS: Validate pre-auth code
+IssuerAS -> IssuerAS: Validate PIN
+IssuerAS -> IssuerAS: Check not expired
+IssuerAS -> IssuerAS: Check not used before
+
+alt Invalid code or PIN
+  IssuerAS --> OID4VCI: 400 Bad Request\n{"error": "invalid_grant"}
+  OID4VCI --> WalletUI: Token request failed
+  WalletUI -> User: Error: Invalid PIN or code
+  deactivate IssuerAS
+  deactivate OID4VCI
+  deactivate WalletUI
+  [<-- User
+end
+
+IssuerAS -> IssuerAS: Generate access token
+IssuerAS -> IssuerAS: Mark pre-auth code as used
+
+IssuerAS --> OID4VCI: 200 OK\nAccess token response
+deactivate IssuerAS
+
+note right of IssuerAS
+  **Token Response:**
+  {
+    "access_token": "eyJhbGc...",
+    "token_type": "Bearer",
+    "expires_in": 86400,
+    "c_nonce": "tZignsnFbp",
+    "c_nonce_expires_in": 300
+  }
+end note
+
+OID4VCI -> OID4VCI: Parse token response
+OID4VCI -> OID4VCI: Extract access_token
+OID4VCI -> OID4VCI: Extract c_nonce (for PoP)
+OID4VCI -> OID4VCI: Store token (in memory)
+
+== 5. Proof of Possession (Key Binding) ==
+
+OID4VCI -> DIDMgr: getDefaultDID() or\ncreateNewDID()
+activate DIDMgr
+
+DIDMgr -> DIDMgr: Check default DID exists
+alt No DID exists
+  DIDMgr -> KeyMgr: generateKey(Ed25519)
+  activate KeyMgr
+  KeyMgr -> KeyMgr: Generate Ed25519 key pair
+  KeyMgr -> KeyMgr: Store private key in Keystore
+  KeyMgr --> DIDMgr: publicKey, keyId
+  deactivate KeyMgr
+  
+  DIDMgr -> DIDMgr: Create did:key from publicKey
+  DIDMgr -> DIDMgr: Store DID in database
+else DID exists
+  DIDMgr -> DIDMgr: Get existing DID
+end
+
+DIDMgr --> OID4VCI: holderDID
+deactivate DIDMgr
+
+OID4VCI -> KeyMgr: getPrivateKey(holderDID)
+activate KeyMgr
+KeyMgr -> KeyMgr: Retrieve from Keystore
+KeyMgr --> OID4VCI: privateKey
+deactivate KeyMgr
+
+OID4VCI -> OID4VCI: Build JWT Proof of Possession
+note right of OID4VCI
+  **JWT PoP Structure:**
+  Header:
+  {
+    "alg": "EdDSA",
+    "typ": "openid4vci-proof+jwt",
+    "kid": "did:key:z6Mkf...#z6Mkf..."
+  }
+  
+  Payload:
+  {
+    "iss": "did:key:z6Mkf...",
+    "aud": "https://issuer.com",
+    "iat": 1516239022,
+    "nonce": "tZignsnFbp"  // from c_nonce
+  }
+end note
+
+OID4VCI -> OID4VCI: Create JWT header
+OID4VCI -> OID4VCI: Create JWT payload:\n- iss: holder DID\n- aud: issuer URL\n- iat: current timestamp\n- nonce: c_nonce
+
+OID4VCI -> KeyMgr: signJWT(header, payload, privateKey)
+activate KeyMgr
+KeyMgr -> KeyMgr: Sign with Ed25519
+KeyMgr --> OID4VCI: JWT signature
+deactivate KeyMgr
+
+OID4VCI -> OID4VCI: Combine to JWT:\nheader.payload.signature
+
+== 6. Credential Request ==
+
+OID4VCI -> OID4VCI: Build credential request
+note right of OID4VCI
+  **Credential Request (POST):**
+  POST https://issuer.com/credential
+  Authorization: Bearer eyJhbGc...
+  Content-Type: application/json
+  
+  {
+    "format": "jwt_vc_json",
+    "types": [
+      "VerifiableCredential",
+      "UniversityDegreeCredential"
+    ],
+    "proof": {
+      "proof_type": "jwt",
+      "jwt": "eyJhbGc..."  // PoP JWT
+    }
+  }
+end note
+
+OID4VCI -> IssuerCred: POST /credential\n(with access token & PoP)
+activate IssuerCred
+
+IssuerCred -> IssuerCred: Validate access token
+IssuerCred -> IssuerCred: Extract PoP JWT
+IssuerCred -> IssuerCred: Parse JWT header
+
+IssuerCred -> DIDResolver: Resolve holder DID
+activate DIDResolver
+DIDResolver -> DIDResolver: Fetch DID document
+DIDResolver --> IssuerCred: DID document + publicKey
+deactivate DIDResolver
+
+IssuerCred -> IssuerCred: Verify JWT signature\nwith holder publicKey
+IssuerCred -> IssuerCred: Validate nonce matches
+IssuerCred -> IssuerCred: Validate aud matches issuer
+IssuerCred -> IssuerCred: Validate iat (not expired)
+
+alt Invalid PoP
+  IssuerCred --> OID4VCI: 400 Bad Request\n{"error": "invalid_proof"}
+  OID4VCI --> WalletUI: Credential request failed
+  WalletUI -> User: Error: Invalid proof
+  deactivate IssuerCred
+  deactivate OID4VCI
+  deactivate WalletUI
+  [<-- User
+end
+
+IssuerCred -> IssuerCred: Retrieve credential data\n(from issuer system)
+IssuerCred -> IssuerCred: Build Verifiable Credential
+note right of IssuerCred
+  **Verifiable Credential (JWT-VC):**
+  {
+    "@context": ["https://www.w3.org/2018/credentials/v1"],
+    "type": ["VerifiableCredential", "UniversityDegreeCredential"],
+    "issuer": "did:ion:EiDa...",
+    "issuanceDate": "2024-01-15T12:00:00Z",
+    "expirationDate": "2029-01-15T12:00:00Z",
+    "credentialSubject": {
+      "id": "did:key:z6Mkf...",  // holder DID
+      "degree": {
+        "type": "BachelorDegree",
+        "name": "Bachelor of Science in Computer Science"
+      },
+      "name": "Alice Smith",
+      "graduationDate": "2023-06-15"
+    },
+    "credentialStatus": {
+      "type": "StatusList2021Entry",
+      "statusPurpose": "revocation",
+      "statusListIndex": "12345",
+      "statusListCredential": "https://issuer.com/status/1"
+    }
+  }
+end note
+
+IssuerCred -> IssuerCred: Get issuer DID private key
+IssuerCred -> IssuerCred: Sign credential (JWT format)
+IssuerCred -> IssuerCred: Encode as JWT
+
+IssuerCred --> OID4VCI: 200 OK\nCredential response
+deactivate IssuerCred
+
+note right of IssuerCred
+  **Credential Response:**
+  {
+    "format": "jwt_vc_json",
+    "credential": "eyJhbGc....",  // JWT-encoded VC
+    "c_nonce": "fGFF7UkhLa",
+    "c_nonce_expires_in": 300
+  }
+  
+  OR deferred:
+  {
+    "transaction_id": "8xLOxBtZp8",
+    "c_nonce": "wlbQc6pCJp"
+  }
+end note
+
+OID4VCI -> OID4VCI: Parse credential response
+OID4VCI -> OID4VCI: Check if immediate or deferred
+
+alt Deferred credential
+  OID4VCI -> OID4VCI: Store transaction_id
+  OID4VCI -> WalletUI: Credential pending
+  WalletUI -> User: Credential being prepared...\nYou'll be notified
+  note right of OID4VCI
+    Wallet will poll with transaction_id
+    or wait for push notification
+  end note
+  deactivate OID4VCI
+  deactivate WalletUI
+  [<-- User
+end
+
+OID4VCI -> OID4VCI: Extract JWT credential
+OID4VCI -> OID4VCI: Decode JWT (parse)
+
+== 7. Credential Validation ==
+
+OID4VCI -> OID4VCI: Parse JWT header
+OID4VCI -> OID4VCI: Extract issuer DID from payload
+
+OID4VCI -> DIDResolver: Resolve issuer DID
+activate DIDResolver
+DIDResolver -> DIDResolver: Query DID method\n(e.g., ION node)
+DIDResolver --> OID4VCI: Issuer DID document + publicKey
+deactivate DIDResolver
+
+OID4VCI -> OID4VCI: Verify JWT signature\nwith issuer publicKey
+
+alt Invalid signature
+  OID4VCI --> WalletUI: Validation failed
+  WalletUI -> User: Error: Invalid credential signature
+  deactivate OID4VCI
+  deactivate WalletUI
+  [<-- User
+end
+
+OID4VCI -> OID4VCI: Validate credential structure
+OID4VCI -> OID4VCI: Check @context
+OID4VCI -> OID4VCI: Check types
+OID4VCI -> OID4VCI: Validate credentialSubject.id\nmatches holder DID
+
+alt Subject DID mismatch
+  OID4VCI --> WalletUI: Validation failed
+  WalletUI -> User: Error: Credential not for this DID
+  deactivate OID4VCI
+  deactivate WalletUI
+  [<-- User
+end
+
+OID4VCI -> OID4VCI: Check issuanceDate <= now
+OID4VCI -> OID4VCI: Check expirationDate > now
+
+alt Expired credential
+  OID4VCI --> WalletUI: Validation failed
+  WalletUI -> User: Error: Credential expired
+  deactivate OID4VCI
+  deactivate WalletUI
+  [<-- User
+end
+
+OID4VCI -> OID4VCI: Extract credentialStatus info
+OID4VCI -> OID4VCI: (Optional) Check revocation status
+
+note right of OID4VCI
+  **Revocation Check:**
+  - Fetch StatusList2021 credential
+  - Check bit at statusListIndex
+  - If bit=1, credential revoked
+  - If bit=0, credential valid
+end note
+
+OID4VCI -> OID4VCI: All validations passed ✓
+
+== 8. Store Credential & Display ==
+
+OID4VCI -> CredStore: storeCredential(credential)
+activate CredStore
+
+CredStore -> CredStore: Generate credential ID
+CredStore -> CredStore: Extract metadata:\n- type, issuer, dates
+CredStore -> CredStore: Encrypt credential JSON\n(field-level encryption)
+CredStore -> CredStore: Store in database
+CredStore -> CredStore: Index for search
+
+CredStore --> OID4VCI: Credential stored (ID)
+deactivate CredStore
+
+OID4VCI -> OID4VCI: Fetch OCA bundle\n(branding) - optional
+note right of OID4VCI
+  **OCA (Overlays Capture Architecture):**
+  Provides visual styling:
+  - Background colors
+  - Logo
+  - Attribute labels
+  - Localization
+end note
+
+OID4VCI --> WalletUI: Credential received successfully
+deactivate OID4VCI
+
+WalletUI -> WalletUI: Update credential list UI
+WalletUI -> User: ✓ Credential added!\n"UniversityDegreeCredential"
+deactivate WalletUI
+
+User -> User: View credential in wallet
+
+note over User, IssuerCred
+  **Flow Complete!**
+  User now has verifiable credential in wallet.
+  Can present to verifiers using OpenID4VP or DIDComm.
+end note
+
+@enduml

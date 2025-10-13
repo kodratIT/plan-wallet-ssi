@@ -1,0 +1,164 @@
+@startuml BC Wallet - Android Native Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram - Native Android Implementation (Kotlin)
+
+Container_Boundary(presentation, "Presentation Layer (Jetpack Compose)") {
+    Component(main_activity, "MainActivity", "Activity", "Main entry point and navigation host")
+    
+    Component(screens, "Screen Composables", "Jetpack Compose", "UI screens (Home, Credentials, Proofs, Settings)")
+    
+    Component(ui_components, "UI Components", "Compose", "Reusable composables (Cards, Buttons, etc.)")
+    
+    Component(navigation_graph, "Navigation Graph", "Jetpack Navigation", "Screen routing and navigation")
+    
+    Component(theme_system, "Material 3 Theme", "Compose Theme", "Material Design 3 theming")
+}
+
+Container_Boundary(viewmodel, "ViewModel Layer (MVVM)") {
+    Component(home_vm, "HomeViewModel", "ViewModel", "Home screen state and logic")
+    
+    Component(credentials_vm, "CredentialsViewModel", "ViewModel", "Credentials management")
+    
+    Component(proofs_vm, "ProofsViewModel", "ViewModel", "Proofs presentation logic")
+    
+    Component(settings_vm, "SettingsViewModel", "ViewModel", "App settings management")
+    
+    ComponentQueue(state_flow, "StateFlow/LiveData", "Observable State", "Reactive state management")
+}
+
+Container_Boundary(domain, "Domain Layer (Use Cases)") {
+    Component(get_creds_uc, "GetCredentialsUseCase", "Use Case", "Fetch and filter credentials")
+    
+    Component(accept_cred_uc, "AcceptCredentialUseCase", "Use Case", "Accept credential offer")
+    
+    Component(generate_proof_uc, "GenerateProofUseCase", "Use Case", "Generate ZK proof")
+    
+    Component(establish_conn_uc, "EstablishConnectionUseCase", "Use Case", "Create peer connection")
+}
+
+Container_Boundary(data, "Data Layer (Repository Pattern)") {
+    Component(cred_repo, "CredentialRepository", "Repository", "Credential data source abstraction")
+    
+    Component(proof_repo, "ProofRepository", "Repository", "Proof data source abstraction")
+    
+    Component(conn_repo, "ConnectionRepository", "Repository", "Connection data source abstraction")
+    
+    Component(wallet_repo, "WalletRepository", "Repository", "Wallet data access")
+}
+
+Container_Boundary(ssi_core, "SSI Core (Native Aries Implementation)") {
+    Component(conn_handler, "ConnectionProtocolHandler", "Aries Protocol", "Manual connection protocol implementation")
+    
+    Component(cred_handler, "CredentialProtocolHandler", "Aries Protocol", "Manual credential issuance protocol")
+    
+    Component(proof_handler, "ProofProtocolHandler", "Aries Protocol", "Manual proof presentation protocol")
+    
+    Component(didcomm_layer, "DIDComm Layer", "Encryption/Routing", "Message encryption and routing")
+    
+    Component(indy_wrapper, "IndyWrapper", "JNI Bridge", "Kotlin wrapper for Indy SDK")
+    
+    Component(askar_wrapper, "AskarWrapper", "JNI Bridge", "Kotlin wrapper for Aries Askar")
+    
+    Component(anoncreds_wrapper, "AnonCredsWrapper", "JNI Bridge", "Kotlin wrapper for AnonCreds")
+}
+
+Container_Boundary(storage, "Data Sources") {
+    ComponentDb(room_db, "Room Database", "SQLite", "Local credential and connection storage")
+    
+    Component(encrypted_prefs, "EncryptedSharedPreferences", "Android", "Encrypted app preferences")
+    
+    Component(keystore, "Android Keystore", "Hardware", "Secure key storage")
+}
+
+Container_Boundary(network, "Network Layer") {
+    Component(retrofit, "Retrofit Client", "HTTP", "REST API client")
+    
+    Component(websocket, "OkHttp WebSocket", "WebSocket", "Real-time messaging")
+    
+    Component(bcsc_oauth, "BCSC OAuth Client", "OAuth2", "BC Services Card integration")
+}
+
+Container_Boundary(native_services, "Native Android Services") {
+    Component(biometric, "BiometricPrompt", "Android API", "Fingerprint/Face unlock")
+    
+    Component(camerax, "CameraX", "Jetpack", "QR code scanning")
+    
+    Component(workmanager, "WorkManager", "Jetpack", "Background tasks")
+    
+    Component(fcm, "Firebase Cloud Messaging", "Google Services", "Push notifications")
+}
+
+Rel(main_activity, navigation_graph, "Sets up")
+Rel(navigation_graph, screens, "Navigates to")
+Rel(screens, ui_components, "Renders")
+Rel(screens, home_vm, "Observes")
+Rel(screens, credentials_vm, "Observes")
+Rel(screens, proofs_vm, "Observes")
+
+Rel(home_vm, state_flow, "Exposes state via")
+Rel(credentials_vm, state_flow, "Exposes state via")
+Rel(proofs_vm, state_flow, "Exposes state via")
+
+Rel(credentials_vm, get_creds_uc, "Calls")
+Rel(credentials_vm, accept_cred_uc, "Calls")
+Rel(proofs_vm, generate_proof_uc, "Calls")
+
+Rel(get_creds_uc, cred_repo, "Uses")
+Rel(accept_cred_uc, cred_repo, "Uses")
+Rel(generate_proof_uc, proof_repo, "Uses")
+Rel(establish_conn_uc, conn_repo, "Uses")
+
+Rel(cred_repo, cred_handler, "Delegates to")
+Rel(proof_repo, proof_handler, "Delegates to")
+Rel(conn_repo, conn_handler, "Delegates to")
+
+Rel(cred_handler, indy_wrapper, "Uses")
+Rel(cred_handler, anoncreds_wrapper, "Uses")
+Rel(proof_handler, anoncreds_wrapper, "Uses")
+Rel(conn_handler, didcomm_layer, "Uses")
+
+Rel(didcomm_layer, indy_wrapper, "Encryption")
+Rel(didcomm_layer, websocket, "Sends/receives")
+
+Rel(indy_wrapper, askar_wrapper, "Stores data")
+Rel(askar_wrapper, keystore, "Stores master key")
+
+Rel(cred_repo, room_db, "Queries")
+Rel(wallet_repo, encrypted_prefs, "Reads/writes")
+
+Rel(cred_handler, retrofit, "API calls")
+Rel(bcsc_oauth, retrofit, "OAuth requests")
+
+Rel(biometric, settings_vm, "Auth callback")
+Rel(camerax, screens, "Scan QR")
+Rel(workmanager, cred_handler, "Background sync")
+Rel(fcm, didcomm_layer, "Notification trigger")
+
+note right of indy_wrapper
+  JNI bridge to native
+  Hyperledger Indy SDK
+  
+  Handles:
+  - Wallet operations
+  - Crypto (Ed25519, X25519)
+  - Ledger queries
+end note
+
+note right of cred_handler
+  Manual implementation
+  of Aries Issue Credential
+  Protocol 2.0
+  
+  States:
+  - Offer received
+  - Request sent
+  - Credential received
+  - Done
+end note
+
+SHOW_LEGEND()
+
+@enduml

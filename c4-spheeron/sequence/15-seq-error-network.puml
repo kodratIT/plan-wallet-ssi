@@ -1,0 +1,703 @@
+@startuml 15-seq-error-network
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Network Error Handling & Retry Logic\n**Resilient Communication with Timeouts, Retries, and Offline Mode**
+
+actor "User" as User
+participant "Wallet UI" as UI
+participant "Network\nLayer" as Network
+participant "Retry\nManager" as Retry
+participant "Message\nQueue" as Queue
+participant "Connection\nMonitor" as Monitor
+participant "Error\nHandler" as ErrorHandler
+database "Local\nStorage" as Storage
+participant "External\nService" as Service
+
+== SCENARIO A: Connection Timeout During Credential Request ==
+
+User -> UI: Request credential
+activate UI
+
+UI -> Network: sendCredentialRequest(url, data)
+activate Network
+
+Network -> Network: Configure timeout: 30 seconds
+
+Network -> Service: POST /credential\n(with timeout)
+activate Service
+
+note right of Network
+  **HTTP Request:**
+  POST https://issuer.com/credential
+  Timeout: 30 seconds
+  
+  Waiting for response...
+end note
+
+Service -> Service: Processing request...
+Service -> Service: (Slow response - 35s)
+
+note right of Service
+  **Timeout Scenario:**
+  
+  Server is slow or overloaded.
+  Request takes longer than timeout.
+  
+  Client must handle gracefully.
+end note
+
+Network -> Network: 30 seconds elapsed
+Network -> Network: Timeout!
+
+Network --> UI: TimeoutError
+deactivate Service
+deactivate Network
+
+UI -> ErrorHandler: handleError(TimeoutError)
+activate ErrorHandler
+
+ErrorHandler -> ErrorHandler: Classify error:\nRetryable
+
+ErrorHandler -> Retry: scheduleRetry(request, attempt: 1)
+activate Retry
+
+note right of Retry
+  **Retry Policy:**
+  
+  Max retries: 3
+  Backoff strategy: Exponential
+  
+  Attempt 1: wait 2 seconds
+  Attempt 2: wait 4 seconds
+  Attempt 3: wait 8 seconds
+  
+  Total max time: ~14 seconds + 90s requests
+end note
+
+Retry -> UI: Show retry message
+UI -> User: "Request timed out.\nRetrying... (1/3)"
+
+Retry -> Retry: Wait 2 seconds\n(exponential backoff)
+Retry -> Network: Retry attempt 1
+activate Network
+
+Network -> Service: POST /credential (retry)
+activate Service
+
+Service -> Service: Still slow...
+Service -> Service: (Times out again - 30s)
+
+Network -> Network: Timeout!
+Network --> Retry: TimeoutError
+deactivate Service
+deactivate Network
+
+Retry -> Retry: Increment attempt: 2
+Retry -> UI: Update status
+UI -> User: "Retrying... (2/3)"
+
+Retry -> Retry: Wait 4 seconds\n(exponential backoff)
+Retry -> Network: Retry attempt 2
+activate Network
+
+Network -> Service: POST /credential (retry)
+activate Service
+
+note right of Service
+  **Server Recovery:**
+  
+  Server load decreased.
+  Can now respond quickly.
+end note
+
+Service -> Service: Process request (fast)
+Service --> Network: 200 OK\n+ credential data
+deactivate Service
+
+Network --> Retry: Success!
+deactivate Network
+
+Retry -> Retry: Clear retry state
+Retry --> UI: Request successful
+deactivate Retry
+
+deactivate ErrorHandler
+
+UI -> User: ✓ Credential received!
+deactivate UI
+
+note right of User
+  **Result:**
+  
+  ✓ Success after 2 retries
+  
+  Total time:
+  • 1st attempt: 30s timeout
+  • Wait: 2s
+  • 2nd attempt: 30s timeout
+  • Wait: 4s
+  • 3rd attempt: 5s success
+  
+  Total: ~71 seconds
+  
+  User experience: Transparent retry
+end note
+
+== SCENARIO B: Complete Network Loss (Offline Mode) ==
+
+User -> UI: Open wallet
+activate UI
+
+UI -> Monitor: Check network status
+activate Monitor
+
+Monitor -> Monitor: Attempt connection test
+Monitor -> Service: HEAD /ping
+activate Service
+
+Service -[#red]x Monitor: No response\n(Network unreachable)
+
+note right of Monitor
+  **Network Detection:**
+  
+  Methods:
+  • Reachability API (iOS/Android)
+  • Ping known endpoint
+  • Check WiFi/cellular status
+  
+  Result: Offline
+end note
+
+Monitor -> Monitor: Set state: OFFLINE
+Monitor --> UI: Network unavailable
+deactivate Monitor
+deactivate Service
+
+UI -> UI: Enable offline mode
+UI -> UI: Update UI state
+
+UI -> User: Show offline banner
+activate User
+
+note right of UI
+  **Offline Mode UI:**
+  
+  ╔══════════════════════════════╗
+  ║ ⚠ You are offline           ║
+  ║ Some features unavailable    ║
+  ╚══════════════════════════════╝
+  
+  Available:
+  • View credentials ✓
+  • View connections ✓
+  • Prepare presentations ✓
+  
+  Unavailable:
+  • Request credentials ✗
+  • Send presentations ✗
+  • Sync messages ✗
+end note
+
+User -> UI: Try to request credential
+UI -> User: Error: Cannot request\n(offline mode)
+
+User -> UI: View existing credentials
+UI -> Storage: Load credentials\n(from local cache)
+activate Storage
+Storage --> UI: Credential list
+deactivate Storage
+
+UI -> User: Display credentials\n(cached data)
+
+note right of User
+  **Offline Capabilities:**
+  
+  ✓ View wallet
+  ✓ View credentials
+  ✓ View connections
+  ✓ Review history
+  ✓ Prepare (draft) presentations
+  ✓ Manage settings
+  
+  ✗ Network operations queued
+end note
+
+User -> UI: Try to send presentation
+activate UI
+
+UI -> Queue: queueMessage(presentation)
+activate Queue
+
+note right of Queue
+  **Message Queue:**
+  
+  Stores outbound messages for
+  later transmission when online.
+  
+  Queue entry:
+  • ID: uuid
+  • Type: presentation
+  • Data: <presentation>
+  • Destination: <verifier_url>
+  • Queued at: timestamp
+  • Attempts: 0
+  • Status: pending
+end note
+
+Queue -> Storage: Persist to database
+activate Storage
+Storage --> Queue: Stored
+deactivate Storage
+
+Queue --> UI: Message queued
+deactivate Queue
+
+UI -> User: "Presentation queued.\nWill send when online."
+deactivate UI
+
+== Network Reconnection ==
+
+note right of Monitor
+  **Time passes...**
+  User moves to area with WiFi
+end note
+
+Monitor -> Monitor: Periodic network check\n(every 5 seconds)
+activate Monitor
+
+Monitor -> Service: HEAD /ping
+activate Service
+Service --> Monitor: 200 OK
+deactivate Service
+
+Monitor -> Monitor: Set state: ONLINE
+Monitor -> UI: Network restored!
+deactivate Monitor
+
+UI -> UI: Disable offline mode
+UI -> UI: Hide offline banner
+UI -> User: ✓ Back online!
+
+UI -> Queue: processQueue()
+activate Queue
+
+Queue -> Storage: Load pending messages
+activate Storage
+Storage --> Queue: Message list
+deactivate Storage
+
+note right of Queue
+  **Process Queue:**
+  
+  Found 1 pending message:
+  • Presentation to verifier
+  
+  Processing FIFO (first in, first out)
+end note
+
+Queue -> Network: Send queued message
+activate Network
+
+Network -> Service: POST /presentation
+activate Service
+Service --> Network: 200 OK
+deactivate Service
+
+Network --> Queue: Success
+deactivate Network
+
+Queue -> Storage: Mark message as sent
+activate Storage
+Storage --> Queue: Updated
+deactivate Storage
+
+Queue --> UI: Queue processed
+deactivate Queue
+
+UI -> User: ✓ Presentation sent!
+deactivate User
+
+note right of User
+  **Seamless Recovery:**
+  
+  User perspective:
+  1. Tried to send while offline
+  2. Message queued automatically
+  3. Reconnected to network
+  4. Message sent automatically
+  5. Notification of success
+  
+  No user intervention needed!
+end note
+
+== SCENARIO C: Server Returns 500 Internal Server Error ==
+
+User -> UI: Request credential
+activate UI
+
+UI -> Network: sendCredentialRequest()
+activate Network
+
+Network -> Service: POST /credential
+activate Service
+
+Service -> Service: Internal error occurred\n(database failure)
+
+Service --> Network: 500 Internal Server Error
+deactivate Service
+
+note right of Service
+  **500 Error:**
+  
+  Server-side error.
+  May be temporary.
+  
+  Retryable? Usually YES
+  (might resolve quickly)
+end note
+
+Network --> UI: ServerError (500)
+deactivate Network
+
+UI -> ErrorHandler: handleError(ServerError)
+activate ErrorHandler
+
+ErrorHandler -> ErrorHandler: Check error code: 500
+ErrorHandler -> ErrorHandler: Classify: Retryable
+
+note right of ErrorHandler
+  **Error Classification:**
+  
+  Retryable:
+  • 408 Request Timeout
+  • 429 Too Many Requests
+  • 500 Internal Server Error
+  • 502 Bad Gateway
+  • 503 Service Unavailable
+  • 504 Gateway Timeout
+  • Network timeouts
+  
+  Non-retryable:
+  • 400 Bad Request
+  • 401 Unauthorized
+  • 403 Forbidden
+  • 404 Not Found
+  • 422 Unprocessable Entity
+end note
+
+ErrorHandler -> Retry: scheduleRetry(request)
+activate Retry
+
+Retry -> UI: Show message
+UI -> User: "Server error. Retrying..."
+
+Retry -> Retry: Wait 2 seconds
+Retry -> Network: Retry attempt 1
+activate Network
+
+Network -> Service: POST /credential
+activate Service
+
+Service -> Service: Still failing...
+Service --> Network: 500 Internal Server Error
+deactivate Service
+
+Network --> Retry: ServerError (500)
+deactivate Network
+
+Retry -> Retry: Wait 4 seconds
+Retry -> Network: Retry attempt 2
+activate Network
+
+Network -> Service: POST /credential
+activate Service
+
+Service -> Service: Still failing...
+Service --> Network: 500 Internal Server Error
+deactivate Service
+
+Network --> Retry: ServerError (500)
+deactivate Network
+
+Retry -> Retry: Wait 8 seconds
+Retry -> Network: Retry attempt 3
+activate Network
+
+Network -> Service: POST /credential
+activate Service
+
+Service -> Service: Still failing...
+Service --> Network: 500 Internal Server Error
+deactivate Service
+
+Network --> Retry: ServerError (500)
+deactivate Network
+
+Retry -> Retry: Max retries reached (3)
+Retry -> Retry: Give up
+
+Retry -> Storage: Save failed request\n(for manual retry)
+activate Storage
+Storage --> Retry: Saved
+deactivate Storage
+
+Retry --> ErrorHandler: All retries failed
+deactivate Retry
+
+ErrorHandler -> UI: Show error to user
+deactivate ErrorHandler
+
+UI -> User: Display error message
+activate User
+
+note right of UI
+  **User-Friendly Error:**
+  
+  ✗ Unable to Request Credential
+  
+  The issuer's server is experiencing
+  problems. This is not your fault.
+  
+  What you can do:
+  • Try again later
+  • Contact issuer support
+  • Check issuer's status page
+  
+  [Retry Now] [Cancel]
+end note
+
+User -> UI: Click "Retry Now"
+deactivate User
+
+UI -> Network: Manual retry
+activate Network
+
+Network -> Service: POST /credential
+activate Service
+
+note right of Service
+  **Server Fixed:**
+  
+  Admin restarted database.
+  Server now working.
+end note
+
+Service -> Service: Process successfully
+Service --> Network: 200 OK + credential
+deactivate Service
+
+Network --> UI: Success!
+deactivate Network
+
+UI -> User: ✓ Credential received!
+deactivate UI
+
+note right of User
+  **Manual Retry Success:**
+  
+  Automatic retries failed,
+  but manual retry succeeded.
+  
+  Server was down temporarily.
+end note
+
+== SCENARIO D: DNS Resolution Failure ==
+
+User -> UI: Scan QR code\n(with invalid domain)
+activate UI
+
+note right of User
+  **QR Code:**
+  
+  https://issuer-typo.co/offer
+  
+  Domain doesn't exist or DNS fails
+end note
+
+UI -> Network: fetchCredentialOffer(url)
+activate Network
+
+Network -> Network: Parse URL:\nhttps://issuer-typo.co/offer
+
+Network -> Network: Resolve DNS:\nissuer-typo.co
+
+Network -[#red]x Network: DNS resolution failed\n(Name not found)
+
+note right of Network
+  **DNS Error:**
+  
+  getaddrinfo failed:
+  "Name or service not known"
+  
+  This is NOT retryable.
+  Domain is invalid or doesn't exist.
+end note
+
+Network --> UI: DNSError
+deactivate Network
+
+UI -> ErrorHandler: handleError(DNSError)
+activate ErrorHandler
+
+ErrorHandler -> ErrorHandler: Classify: Non-retryable\n(DNS failure)
+
+ErrorHandler -> UI: Show error
+deactivate ErrorHandler
+
+UI -> User: Display error
+activate User
+
+note right of UI
+  **Error Message:**
+  
+  ✗ Invalid QR Code
+  
+  Cannot reach issuer:
+  "issuer-typo.co"
+  
+  Possible reasons:
+  • Incorrect URL in QR code
+  • Issuer domain offline
+  • Network connectivity issue
+  
+  Please verify the QR code
+  or contact the issuer.
+  
+  [Scan Again] [Cancel]
+end note
+
+User -> UI: Scan different QR code
+deactivate User
+deactivate UI
+
+== SCENARIO E: SSL/TLS Certificate Error ==
+
+User -> UI: Request credential
+activate UI
+
+UI -> Network: sendRequest(https://bad-cert.com)
+activate Network
+
+Network -> Service: HTTPS handshake
+activate Service
+
+Service --> Network: Certificate invalid\n(expired/self-signed)
+
+note right of Service
+  **TLS Error:**
+  
+  Certificate issues:
+  • Expired certificate
+  • Self-signed certificate
+  • Hostname mismatch
+  • Untrusted CA
+  
+  Security risk!
+end note
+
+Network -[#red]x Network: SSL verification failed
+
+Network --> UI: SSLError
+deactivate Network
+deactivate Service
+
+UI -> ErrorHandler: handleError(SSLError)
+activate ErrorHandler
+
+ErrorHandler -> ErrorHandler: Classify: SECURITY RISK\nNon-retryable
+
+ErrorHandler -> UI: Show security warning
+deactivate ErrorHandler
+
+UI -> User: Security warning
+activate User
+
+note right of UI
+  **Security Warning:**
+  
+  ⚠ SECURITY WARNING
+  
+  The issuer's security certificate
+  is invalid or expired.
+  
+  Proceeding is NOT recommended.
+  Your connection may not be secure.
+  
+  Certificate error:
+  "Certificate expired on 2023-12-01"
+  
+  [Go Back] [Contact Issuer]
+end note
+
+User -> UI: Go back (abort)
+deactivate User
+deactivate UI
+
+note right of User
+  **Security First:**
+  
+  Never proceed with invalid certificates
+  in production wallets.
+  
+  Protects users from:
+  • Man-in-the-middle attacks
+  • Impersonation
+  • Data interception
+end note
+
+== Summary: Error Handling Strategy ==
+
+note over User, Service
+  **Error Handling Best Practices:**
+  
+  1. **Classify Errors:**
+     • Retryable (timeouts, 5xx errors)
+     • Non-retryable (4xx errors, DNS failures)
+     • Security risks (SSL errors)
+  
+  2. **Retry Strategy:**
+     • Exponential backoff (2s, 4s, 8s...)
+     • Max retry attempts (typically 3)
+     • Idempotent operations only
+     • User feedback during retries
+  
+  3. **Offline Mode:**
+     • Detect network state
+     • Queue operations
+     • Enable offline features
+     • Auto-process queue when online
+  
+  4. **User Experience:**
+     • Clear error messages
+     • Actionable guidance
+     • Progress indication
+     • Manual retry option
+  
+  5. **Logging & Monitoring:**
+     • Log all errors (for debugging)
+     • Track retry rates
+     • Monitor failure patterns
+     • Alert on critical errors
+  
+  6. **Security:**
+     • Never ignore SSL/TLS errors
+     • Validate server responses
+     • Protect against replay attacks
+     • Timeout sensitive operations
+  
+  **Sphereon Wallet Implementation:**
+  
+  • Network layer with built-in retry
+  • Offline mode with message queue
+  • User-friendly error messages
+  • Comprehensive error classification
+  • Automatic recovery when possible
+  • Security-first approach
+  
+  Result: Resilient, user-friendly wallet
+  that handles real-world network conditions
+end note
+
+@enduml

@@ -1,0 +1,82 @@
+@startuml Sphereon Wallet - Data Persistence Layer
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: Data Persistence Layer\n[Complete Database Architecture with TypeORM and SQLite]
+
+Container_Boundary(persistence_layer, "Data Persistence Layer") {
+    
+    Component(db_manager, "Database Manager", "TypeORM Manager", "Database initialization, connection management, migrations, transactions, query optimization, cache coordination")
+    
+    Container_Boundary(entities, "Database Entities") {
+        Component(credential_entity, "CredentialEntity", "Credential Table", "Store credentials: id, type, issuer, issuance/expiration dates, encrypted JSON, attributes, status, format, tags, metadata. Indexed by issuer/type/status/dates")
+        
+        Component(connection_entity, "ConnectionEntity", "Connection Table", "Store DIDComm connections: id, their/my DID/DIDDoc, label, image, state, invitation, mediator, routing keys, service endpoint. Indexed by DIDs/state")
+        
+        Component(did_entity, "DIDEntity", "DID Table", "Store DIDs: DID, method, alias, DID document, encrypted keys, controller, isDefault, state, metadata. Indexed by method/isDefault/state")
+        
+        Component(message_entity, "MessageEntity", "Message Table", "Store DIDComm messages: id, type, thread IDs, from/to, encrypted JSON, direction, status, connection, timestamps. Indexed by thread/type/direction/status")
+        
+        Component(proof_entity, "ProofRequestEntity", "Proof Request Table", "Store proof requests: id, presentation definition, encrypted presentation, verifier, status, selected credentials, disclosed attributes. Indexed by status/verifier")
+        
+        Component(key_entity, "KeyEntity", "Key Table", "Store keys: keyId, algorithm, encrypted private key, public key, encryption metadata, DID, purpose, hardware-backed flag. Indexed by DID/purpose/algorithm")
+    }
+    
+    Container_Boundary(repositories, "Repository Layer") {
+        Component(credential_repo, "CredentialRepository", "Credential Data Access", "Business logic: save, findById, findAll, findByIssuer/Type, findExpiring, search, updateStatus, delete, count, domain conversion")
+        
+        Component(connection_repo, "ConnectionRepository", "Connection Data Access", "Business logic: save, findById, findAll, findByDid, findByState, updateState, delete, getActive, count")
+        
+        Component(did_repo, "DIDRepository", "DID Data Access", "Business logic: save, findByDid, findAll, findByMethod, findDefault, setDefault, updateDocument, delete, count")
+        
+        Component(message_repo, "MessageRepository", "Message Data Access", "Business logic: save, findById, findByThread, findByConnection, findUnread, markAsRead, updateStatus, delete, deleteOlderThan")
+        
+        Component(proof_repo, "ProofRequestRepository", "Proof Request Data Access", "Business logic: save, findById, findAll, findByStatus, findByVerifier, updateStatus, delete")
+    }
+    
+    Container_Boundary(cache_layer, "Cache Layer") {
+        Component(memory_cache, "In-Memory Cache", "LRU Cache", "Fast in-memory caching: DID docs (5min TTL), schemas (1hr), credential metadata (10min), revocation status (5min)")
+        
+        Component(query_cache, "Query Result Cache", "Query Caching", "Cache expensive queries: credential lists, connections, recent activity, statistics")
+    }
+    
+    Component(migration_manager, "Migration Manager", "Schema Versioning", "Database schema migrations: version tracking, up/down migrations, rollback support, data migrations")
+    
+    Component(backup_manager, "Backup Manager", "Database Backup", "Backup and restore: export all data, encrypt with password, create checksum, restore with integrity check")
+}
+
+System_Ext(sqlite, "SQLite Database", "react-native-sqlite-storage")
+System_Ext(secure_storage, "Secure Storage", "Master encryption key")
+
+Rel(db_manager, credential_entity, "Manages schema")
+Rel(db_manager, connection_entity, "Manages schema")
+Rel(db_manager, did_entity, "Manages schema")
+Rel(db_manager, message_entity, "Manages schema")
+Rel(db_manager, proof_entity, "Manages schema")
+Rel(db_manager, key_entity, "Manages schema")
+Rel(db_manager, migration_manager, "Runs migrations")
+Rel(db_manager, sqlite, "Connects to")
+
+Rel(credential_repo, credential_entity, "Queries")
+Rel(connection_repo, connection_entity, "Queries")
+Rel(did_repo, did_entity, "Queries")
+Rel(message_repo, message_entity, "Queries")
+Rel(proof_repo, proof_entity, "Queries")
+
+Rel(credential_repo, memory_cache, "Caches results")
+Rel(credential_repo, query_cache, "Caches queries")
+Rel(connection_repo, memory_cache, "Caches results")
+Rel(did_repo, memory_cache, "Caches results")
+
+Rel(backup_manager, credential_repo, "Exports data")
+Rel(backup_manager, connection_repo, "Exports data")
+Rel(backup_manager, did_repo, "Exports data")
+Rel(backup_manager, secure_storage, "Encryption key")
+
+Rel(migration_manager, sqlite, "Schema changes")
+
+SHOW_LEGEND()
+
+@enduml

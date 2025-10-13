@@ -1,0 +1,638 @@
+@startuml 06-seq-didcomm-connection
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title DIDComm Connection Protocol (RFC 0160)\n**Peer-to-Peer Connection Establishment**
+
+actor "User\n(Holder)" as User
+participant "Mobile\nWallet UI" as WalletUI
+participant "QR Scanner" as QRScanner
+participant "DIDComm\nHandler" as DIDCommHandler
+participant "DID\nManager" as DIDMgr
+participant "Key\nManager" as KeyMgr
+participant "Connection\nStore" as ConnStore
+participant "DIDComm\nMediator" as Mediator
+participant "Inviter\nAgent\n(Issuer/Verifier)" as Inviter
+
+== 1. Scan Connection Invitation ==
+
+note over User, Inviter
+  **Context:**
+  Issuer or Verifier wants to establish
+  a DIDComm connection with the wallet.
+  
+  They create an invitation QR code.
+end note
+
+User -> WalletUI: Open wallet
+activate WalletUI
+
+WalletUI -> User: Home screen
+User -> WalletUI: Tap "Scan QR Code"
+
+WalletUI -> QRScanner: startScanning()
+activate QRScanner
+
+User -> QRScanner: Point camera at QR code
+QRScanner -> QRScanner: Detect and decode QR
+
+QRScanner --> WalletUI: QR data (URL)
+deactivate QRScanner
+
+note right of QRScanner
+  **Invitation QR URL:**
+  didcomm://example.com/invitation?
+  _oob=eyJAaWQiOiI1YmY1...
+  
+  OR
+  
+  https://example.com/invitation?
+  c_i=eyJAaWQiOiI1YmY1...
+end note
+
+WalletUI -> DIDCommHandler: parseInvitation(url)
+activate DIDCommHandler
+
+DIDCommHandler -> DIDCommHandler: Extract invitation parameter\n(_oob or c_i)
+DIDCommHandler -> DIDCommHandler: Base64 decode
+DIDCommHandler -> DIDCommHandler: Parse JSON
+
+note right of DIDCommHandler
+  **Connection Invitation (RFC 0160):**
+  {
+    "@type": "https://didcomm.org/connections/1.0/invitation",
+    "@id": "12345678-1234-1234-1234-123456789abc",
+    "label": "Acme Corp Issuer",
+    "goal_code": "issue-vc",
+    "goal": "To issue you a credential",
+    "recipientKeys": ["8HH5gYEeNc3z7PYXmd54d4x6qAfCNrqQqEB3nS7Zfu7K"],
+    "serviceEndpoint": "https://acme.com/agent",
+    "routingKeys": [],
+    "imageUrl": "https://acme.com/logo.png"
+  }
+end note
+
+DIDCommHandler -> DIDCommHandler: Validate invitation structure
+DIDCommHandler -> DIDCommHandler: Extract:\n- Label (inviter name)\n- Goal\n- Recipient keys\n- Service endpoint\n- Image URL
+
+DIDCommHandler --> WalletUI: Invitation parsed
+deactivate DIDCommHandler
+
+== 2. User Reviews Connection Request ==
+
+WalletUI -> User: Connection Request from:\n\n🏢 Acme Corp Issuer\nGoal: To issue you a credential\n\nAccept connection?
+
+note left of User
+  **User sees:**
+  - Organization name & logo
+  - Purpose of connection
+  - Option to accept/reject
+  
+  Privacy: Connection is pairwise
+  (separate DID for each relationship)
+end note
+
+User -> User: Review request
+
+alt User rejects
+  User -> WalletUI: Reject
+  WalletUI -> User: Connection declined
+  deactivate WalletUI
+  [<-- User
+end
+
+User -> WalletUI: Accept connection
+
+== 3. Create Pairwise DID (did:peer) ==
+
+WalletUI -> DIDCommHandler: acceptInvitation(invitation)
+activate DIDCommHandler
+
+DIDCommHandler -> DIDMgr: createPairwiseDID()
+activate DIDMgr
+
+note right of DIDMgr
+  **did:peer Method 2:**
+  Pairwise DIDs for privacy
+  - One DID per connection
+  - Not published to ledger
+  - Peer-to-peer only
+  - Includes keys + service endpoint
+  
+  Format: did:peer:2.<multibase>
+end note
+
+DIDMgr -> KeyMgr: generateKeyPair(Ed25519)
+activate KeyMgr
+
+KeyMgr -> KeyMgr: Generate Ed25519 key pair\n(for authentication & signing)
+KeyMgr -> KeyMgr: Generate key ID
+KeyMgr -> KeyMgr: Store private key in Keystore
+
+KeyMgr --> DIDMgr: authPublicKey, authKeyId
+deactivate KeyMgr
+
+DIDMgr -> KeyMgr: generateKeyPair(X25519)
+activate KeyMgr
+
+KeyMgr -> KeyMgr: Generate X25519 key pair\n(for encryption & key agreement)
+KeyMgr -> KeyMgr: Generate key ID
+KeyMgr -> KeyMgr: Store private key in Keystore
+
+KeyMgr --> DIDMgr: agrPublicKey, agrKeyId
+deactivate KeyMgr
+
+== 4. Register with Mediator ==
+
+note right of DIDMgr
+  **Mediator Registration:**
+  Wallet uses mediator for message routing
+  because mobile devices:
+  - Don't have static IP
+  - May be offline
+  - Behind NAT/firewall
+  
+  Mediator provides persistent inbox
+end note
+
+DIDMgr -> Mediator: Connect to mediator
+activate Mediator
+Mediator --> DIDMgr: Connected
+deactivate Mediator
+
+DIDMgr -> Mediator: Send coordinate-mediation request
+activate Mediator
+
+note right of Mediator
+  **Coordinate Mediation (RFC 0211):**
+  {
+    "@type": "https://didcomm.org/coordinate-mediation/1.0/mediate-request",
+    "@id": "uuid-1234"
+  }
+end note
+
+Mediator -> Mediator: Create routing inbox for wallet
+Mediator -> Mediator: Assign inbox ID: inbox-abc123
+
+Mediator --> DIDMgr: Mediation grant
+deactivate Mediator
+
+note right of Mediator
+  **Mediation Grant:**
+  {
+    "@type": "https://didcomm.org/coordinate-mediation/1.0/mediate-grant",
+    "@id": "uuid-5678",
+    "endpoint": "https://mediator.com/inbox-abc123",
+    "routing_keys": ["8HH5gYEeNc..."]
+  }
+end note
+
+DIDMgr -> DIDMgr: Store mediator endpoint
+DIDMgr -> DIDMgr: Store routing keys
+
+== 5. Build DID Document ==
+
+DIDMgr -> DIDMgr: Construct did:peer DID document
+
+note right of DIDMgr
+  **did:peer DID Document:**
+  {
+    "id": "did:peer:2.Ez6LSb...",
+    "verificationMethod": [{
+      "id": "did:peer:2.Ez6LSb...#key-1",
+      "type": "Ed25519VerificationKey2020",
+      "controller": "did:peer:2.Ez6LSb...",
+      "publicKeyMultibase": "z6Mkf..."
+    }],
+    "authentication": ["#key-1"],
+    "assertionMethod": ["#key-1"],
+    "keyAgreement": [{
+      "id": "#key-2",
+      "type": "X25519KeyAgreementKey2020",
+      "controller": "did:peer:2.Ez6LSb...",
+      "publicKeyMultibase": "z6LSb..."
+    }],
+    "service": [{
+      "id": "#didcomm",
+      "type": "DIDCommMessaging",
+      "serviceEndpoint": "https://mediator.com/inbox-abc123",
+      "routingKeys": ["8HH5gYEeNc..."]
+    }]
+  }
+end note
+
+DIDMgr -> DIDMgr: Add verificationMethod (Ed25519)
+DIDMgr -> DIDMgr: Add authentication reference
+DIDMgr -> DIDMgr: Add assertionMethod reference
+DIDMgr -> DIDMgr: Add keyAgreement (X25519)
+DIDMgr -> DIDMgr: Add DIDComm service endpoint\n(mediator inbox)
+
+DIDMgr -> DIDMgr: Encode DID document to did:peer format
+DIDMgr -> DIDMgr: Create did:peer:2.<encoded_doc>
+
+DIDMgr -> ConnStore: storeDID(did, didDoc, keys, purpose: "connection")
+activate ConnStore
+ConnStore -> ConnStore: Store in database
+ConnStore --> DIDMgr: DID stored
+deactivate ConnStore
+
+DIDMgr --> DIDCommHandler: Pairwise DID created:\ndid:peer:2.Ez6LSb...
+deactivate DIDMgr
+
+== 6. Build Connection Request ==
+
+DIDCommHandler -> DIDCommHandler: Create connection-request message
+
+note right of DIDCommHandler
+  **Connection Request (RFC 0160):**
+  {
+    "@type": "https://didcomm.org/connections/1.0/request",
+    "@id": "uuid-request-123",
+    "label": "My Sphereon Wallet",
+    "imageUrl": "https://sphereon.com/wallet-icon.png",
+    "connection": {
+      "DID": "did:peer:2.Ez6LSb...",
+      "DIDDoc": {<did_document>}
+    }
+  }
+end note
+
+DIDCommHandler -> DIDCommHandler: Set message type: connection/request
+DIDCommHandler -> DIDCommHandler: Generate message ID
+DIDCommHandler -> DIDCommHandler: Set label (wallet name)
+DIDCommHandler -> DIDCommHandler: Include pairwise DID
+DIDCommHandler -> DIDCommHandler: Include DID document
+
+== 7. Pack Message (Anoncrypt) ==
+
+note right of DIDCommHandler
+  **Anoncrypt vs Authcrypt:**
+  
+  Anoncrypt (here):
+  - No sender authentication
+  - Sender anonymous
+  - Only recipient can decrypt
+  - Used for initial request
+    (no prior relationship yet)
+  
+  Authcrypt (later):
+  - Sender authenticated
+  - Mutual encryption
+  - Used after connection established
+end note
+
+DIDCommHandler -> DIDCommHandler: Get recipient public key\n(from invitation)
+DIDCommHandler -> DIDCommHandler: Prepare for anoncrypt
+
+DIDCommHandler -> KeyMgr: anoncryptMessage(message, recipientKey)
+activate KeyMgr
+
+KeyMgr -> KeyMgr: Generate ephemeral key pair
+KeyMgr -> KeyMgr: ECDH key agreement:\nephemeral_priv + recipient_pub
+KeyMgr -> KeyMgr: Derive shared secret
+KeyMgr -> KeyMgr: Encrypt message (ChaCha20-Poly1305)
+KeyMgr -> KeyMgr: Create JWE structure
+
+note right of KeyMgr
+  **JWE (JSON Web Encryption):**
+  {
+    "protected": "<base64_header>",
+    "recipients": [{
+      "header": {
+        "kid": "<recipient_key_id>"
+      },
+      "encrypted_key": "<wrapped_content_key>"
+    }],
+    "iv": "<initialization_vector>",
+    "ciphertext": "<encrypted_message>",
+    "tag": "<authentication_tag>"
+  }
+end note
+
+KeyMgr --> DIDCommHandler: Packed message (JWE)
+deactivate KeyMgr
+
+== 8. Send Connection Request ==
+
+DIDCommHandler -> Inviter: POST to serviceEndpoint\n(encrypted request)
+activate Inviter
+
+note right of Inviter
+  **HTTP POST:**
+  POST https://acme.com/agent
+  Content-Type: application/didcomm-encrypted+json
+  
+  Body: <JWE_encrypted_message>
+end note
+
+WalletUI -> User: Sending connection request...
+
+Inviter -> Inviter: Receive encrypted message
+Inviter -> Inviter: Unpack message (decrypt with private key)
+Inviter -> Inviter: Parse connection-request
+Inviter -> Inviter: Extract wallet DID
+Inviter -> Inviter: Extract wallet DID document
+Inviter -> Inviter: Store connection (state: "requested")
+
+== 9. Inviter Creates Connection Response ==
+
+Inviter -> Inviter: Create their own pairwise DID
+Inviter -> Inviter: Build their DID document
+
+note right of Inviter
+  **Inviter's DID:**
+  Inviter also creates a unique DID
+  for this connection (pairwise).
+  
+  Both parties have separate DIDs
+  per connection = privacy
+end note
+
+Inviter -> Inviter: Build connection-response message
+
+note right of Inviter
+  **Connection Response:**
+  {
+    "@type": "https://didcomm.org/connections/1.0/response",
+    "@id": "uuid-response-456",
+    "~thread": {
+      "thid": "uuid-request-123"
+    },
+    "connection~sig": {
+      "signature": "<signed_connection_data>",
+      "sig_data": "<base64_encoded_data>",
+      "signer": "<signing_key>"
+    },
+    "connection": {
+      "DID": "did:peer:2.Ez9Abc...",
+      "DIDDoc": {<inviter_did_document>}
+    }
+  }
+end note
+
+Inviter -> Inviter: Include their pairwise DID + DID doc
+Inviter -> Inviter: Sign connection data
+Inviter -> Inviter: Set thread ID (from request)
+
+== 10. Send Response via Mediator ==
+
+Inviter -> Inviter: Pack message (authcrypt now)
+note right of Inviter
+  **Now using Authcrypt:**
+  Connection exists, so sender
+  can authenticate themselves.
+  
+  Encrypt + sign
+end note
+
+Inviter -> Mediator: POST to wallet's mediator endpoint
+activate Mediator
+
+note right of Inviter
+  **POST to Mediator:**
+  POST https://mediator.com/inbox-abc123
+  Content-Type: application/didcomm-encrypted+json
+  
+  Body: <encrypted_response>
+end note
+
+Inviter -> Inviter: Mark connection as "responded"
+Inviter --> DIDCommHandler: 202 Accepted (for request)
+deactivate Inviter
+
+Mediator -> Mediator: Store message in wallet's inbox
+Mediator -> Mediator: Send push notification to wallet
+
+== 11. Push Notification ==
+
+Mediator -> WalletUI: Push notification
+activate WalletUI
+deactivate Mediator
+
+WalletUI -> User: 📬 New message from Acme Corp
+
+note left of User
+  **Push Notification:**
+  "Acme Corp accepted your
+  connection request"
+  
+  User may open app now or later
+end note
+
+User -> WalletUI: Tap notification / Open app
+
+== 12. Retrieve Message from Mediator ==
+
+WalletUI -> DIDCommHandler: checkNewMessages()
+activate DIDCommHandler
+
+DIDCommHandler -> Mediator: Batch message pickup
+activate Mediator
+
+note right of DIDCommHandler
+  **Message Pickup (RFC 0212):**
+  {
+    "@type": "https://didcomm.org/messagepickup/2.0/delivery-request",
+    "@id": "uuid-pickup-789",
+    "limit": 10
+  }
+end note
+
+Mediator -> Mediator: Get messages from inbox
+Mediator --> DIDCommHandler: Batch of messages
+deactivate Mediator
+
+note right of Mediator
+  **Delivery Response:**
+  {
+    "@type": ".../messagepickup/2.0/delivery",
+    "@id": "uuid-delivery-012",
+    "~thread": {"thid": "uuid-pickup-789"},
+    "recipient_key": "...",
+    "message_count": 1,
+    "messages": [{
+      "message": "<encrypted_message>"
+    }]
+  }
+end note
+
+DIDCommHandler -> DIDCommHandler: Extract messages
+
+loop For each message
+  DIDCommHandler -> DIDCommHandler: Unpack message (authcrypt)
+  
+  DIDCommHandler -> KeyMgr: unpackMessage(encrypted_message)
+  activate KeyMgr
+  
+  KeyMgr -> KeyMgr: Identify recipient key (kid)
+  KeyMgr -> KeyMgr: Get private key from Keystore
+  KeyMgr -> KeyMgr: ECDH key agreement (decrypt)
+  KeyMgr -> KeyMgr: Verify authentication tag
+  KeyMgr -> KeyMgr: Decrypt message content
+  KeyMgr -> KeyMgr: Verify sender signature
+  
+  KeyMgr --> DIDCommHandler: Plaintext message + sender DID
+  deactivate KeyMgr
+  
+  DIDCommHandler -> DIDCommHandler: Parse message
+  DIDCommHandler -> DIDCommHandler: Check message type
+end
+
+== 13. Process Connection Response ==
+
+DIDCommHandler -> DIDCommHandler: Type: connection-response
+DIDCommHandler -> DIDCommHandler: Validate thread ID matches request
+
+alt Thread ID mismatch
+  DIDCommHandler -> DIDCommHandler: Discard message (not for us)
+end
+
+DIDCommHandler -> DIDCommHandler: Extract inviter's DID
+DIDCommHandler -> DIDCommHandler: Extract inviter's DID document
+DIDCommHandler -> DIDCommHandler: Verify connection signature
+
+alt Invalid signature
+  DIDCommHandler -> WalletUI: Connection failed
+  WalletUI -> User: Error: Invalid connection response
+  deactivate DIDCommHandler
+  deactivate WalletUI
+  [<-- User
+end
+
+== 14. Store Connection ==
+
+DIDCommHandler -> ConnStore: storeConnection(connection)
+activate ConnStore
+
+note right of ConnStore
+  **Connection Record:**
+  {
+    "id": "uuid-connection-abc",
+    "their_did": "did:peer:2.Ez9Abc...",
+    "their_did_doc": {<inviter_did_document>},
+    "their_label": "Acme Corp Issuer",
+    "their_image_url": "https://acme.com/logo.png",
+    "my_did": "did:peer:2.Ez6LSb...",
+    "my_did_doc": {<wallet_did_document>},
+    "state": "responded",
+    "created_at": "2024-01-15T12:00:00Z",
+    "invitation": {<original_invitation>}
+  }
+end note
+
+ConnStore -> ConnStore: Store connection details:\n- Their DID & DID doc\n- Our pairwise DID\n- State: "responded"
+ConnStore -> ConnStore: Store in database
+
+ConnStore --> DIDCommHandler: Connection stored
+deactivate ConnStore
+
+== 15. Send Acknowledgment ==
+
+DIDCommHandler -> DIDCommHandler: Create ack message
+
+note right of DIDCommHandler
+  **Acknowledgment Message:**
+  {
+    "@type": "https://didcomm.org/notification/1.0/ack",
+    "@id": "uuid-ack-345",
+    "~thread": {
+      "thid": "uuid-response-456"
+    },
+    "status": "OK"
+  }
+end note
+
+DIDCommHandler -> DIDCommHandler: Set thread ID (from response)
+DIDCommHandler -> DIDCommHandler: Pack message (authcrypt)
+
+DIDCommHandler -> KeyMgr: authcryptMessage(ack, theirKey, myKey)
+activate KeyMgr
+
+KeyMgr -> KeyMgr: Get their public key (from DID doc)
+KeyMgr -> KeyMgr: Get my private key
+KeyMgr -> KeyMgr: ECDH key agreement
+KeyMgr -> KeyMgr: Encrypt with authentication
+KeyMgr -> KeyMgr: Sign message
+
+KeyMgr --> DIDCommHandler: Encrypted + signed message
+deactivate KeyMgr
+
+DIDCommHandler -> DIDCommHandler: Extract their service endpoint\nfrom DID document
+
+DIDCommHandler -> Inviter: POST to their endpoint\n(encrypted ack)
+activate Inviter
+
+Inviter -> Inviter: Receive ack
+Inviter -> Inviter: Unpack message
+Inviter -> Inviter: Parse ack
+Inviter -> Inviter: Update connection state = "complete"
+
+Inviter --> DIDCommHandler: 202 Accepted
+deactivate Inviter
+
+== 16. Update Connection State ==
+
+DIDCommHandler -> ConnStore: updateConnectionState(id, "complete")
+activate ConnStore
+
+ConnStore -> ConnStore: UPDATE connection\nSET state = "complete"
+
+ConnStore --> DIDCommHandler: Updated
+deactivate ConnStore
+
+== 17. Notify User & Update UI ==
+
+DIDCommHandler --> WalletUI: Connection established ✓
+deactivate DIDCommHandler
+
+WalletUI -> WalletUI: Update connections list
+WalletUI -> User: ✓ Connected with Acme Corp Issuer\n\nYou can now:\n- Receive credentials\n- Respond to proof requests
+
+note left of User
+  **Connection Established!**
+  
+  What this enables:
+  ✓ Secure messaging channel
+  ✓ Credential issuance
+  ✓ Proof requests
+  ✓ End-to-end encrypted
+  ✓ Privacy-preserving (pairwise DIDs)
+  
+  Relationship is now active
+end note
+
+WalletUI -> User: View connection details?
+User -> WalletUI: Yes
+
+WalletUI -> User: Connection Details:\n\n🏢 Acme Corp Issuer\nConnected: 2024-01-15\nTheir DID: did:peer:2.Ez9Abc...\nYour DID: did:peer:2.Ez6LSb...
+
+deactivate WalletUI
+
+note over User, Inviter
+  **Connection Protocol Complete!**
+  
+  **Final State:**
+  - Both parties have each other's DIDs
+  - Both have each other's DID documents
+  - Both know service endpoints
+  - Both have encryption keys
+  - Connection state: "complete"
+  
+  **Security Features:**
+  - Pairwise DIDs (privacy)
+  - End-to-end encryption (authcrypt)
+  - Mutual authentication
+  - Mediated messaging (availability)
+  - Signed responses (non-repudiation)
+  
+  **Next Steps:**
+  - Issuer can send credential offers
+  - Verifier can send proof requests
+  - Both can send general messages
+  
+  DIDComm connection is foundation for
+  all credential/proof protocols!
+end note
+
+@enduml

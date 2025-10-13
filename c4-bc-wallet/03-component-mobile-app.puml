@@ -1,0 +1,83 @@
+@startuml BC Wallet - Mobile App Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram - Mobile Application Layer
+
+Container_Boundary(mobile_app, "Mobile Application") {
+    Component(app_entry, "App Entry Point", "React Native", "Initializes app and sets up providers")
+    
+    Component(navigation, "Navigation System", "React Navigation", "Manages screen routing and navigation stack")
+    
+    Component(state_store, "State Store", "React Context", "Global application state management")
+    
+    ComponentQueue(event_system, "Event System", "Event Emitter", "Pub/sub for agent events")
+    
+    Component(screens, "Screen Components", "React Components", "UI screens (Home, Credentials, Proofs, etc.)")
+    
+    Component(ui_components, "UI Components", "React Components", "Reusable UI elements (buttons, cards, modals)")
+    
+    Component(theme_system, "Theme System", "Theme Provider", "Visual theming (BC Wallet / BCSC)")
+    
+    Component(i18n, "Localization", "react-i18next", "Multi-language support (EN/FR)")
+    
+    Component(hooks, "Custom Hooks", "React Hooks", "Business logic hooks (useCredentials, useProofs, etc.)")
+    
+    Component(services, "Service Layer", "TypeScript Classes", "Business logic services")
+    
+    Component(bcsc_service, "BCSC Service", "OAuth Client", "BC Services Card authentication")
+    
+    Component(ias_service, "IAS Service", "HTTP Client", "Identity Assurance Service integration")
+    
+    Component(credential_service, "Credential Service", "Business Logic", "Credential operations wrapper")
+    
+    Component(proof_service, "Proof Service", "Business Logic", "Proof operations wrapper")
+    
+    Component(notification_service, "Notification Service", "Native Module", "Push notification handling")
+    
+    Component(biometric_service, "Biometric Service", "Native Module", "Face ID / Fingerprint auth")
+}
+
+Container_Ext(credo_agent, "Credo Agent", "SSI Framework")
+Container_Ext(secure_storage, "Secure Storage", "Native")
+System_Ext(bcsc_api, "BCSC API", "OAuth2")
+System_Ext(ias_api, "IAS API", "REST")
+
+Rel(app_entry, navigation, "Initializes")
+Rel(app_entry, state_store, "Provides")
+Rel(app_entry, theme_system, "Applies")
+Rel(app_entry, i18n, "Configures")
+
+Rel(navigation, screens, "Routes to")
+Rel(screens, ui_components, "Renders")
+Rel(screens, hooks, "Uses")
+
+Rel(ui_components, theme_system, "Styled by")
+Rel(ui_components, i18n, "Translates with")
+
+Rel(hooks, services, "Calls")
+Rel(hooks, state_store, "Reads/updates")
+Rel(hooks, event_system, "Subscribes to")
+
+Rel(services, credential_service, "Uses")
+Rel(services, proof_service, "Uses")
+Rel(services, bcsc_service, "Uses")
+Rel(services, ias_service, "Uses")
+
+Rel(credential_service, credo_agent, "Calls")
+Rel(proof_service, credo_agent, "Calls")
+
+Rel(bcsc_service, bcsc_api, "Authenticates", "HTTPS")
+Rel(bcsc_service, secure_storage, "Stores tokens")
+
+Rel(ias_service, ias_api, "Calls", "HTTPS")
+
+Rel(notification_service, event_system, "Emits events")
+Rel(biometric_service, secure_storage, "Verifies access")
+
+Rel(credo_agent, event_system, "Emits agent events")
+
+SHOW_LEGEND()
+
+@enduml

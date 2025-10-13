@@ -1,0 +1,265 @@
+@startuml Sphereon Wallet - Deployment Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Deployment Architecture for Sphereon Mobile Wallet\n[As the Wallet Creator: Production Infrastructure Topology]
+
+' =============================
+' MOBILE DEVICES
+' =============================
+
+Deployment_Node(mobile_devices, "End User Mobile Devices", "Physical Devices") {
+    
+    Deployment_Node(android_device, "Android Device", "Android 8.0+ (SDK 26+)") {
+        Deployment_Node(android_runtime, "Android Runtime", "ART + Hermes JS Engine") {
+            Container(android_app, "Sphereon Wallet", "React Native / Native Kotlin", "Mobile wallet application\n\nApp Size: ~40MB\nMin RAM: 2GB\nStorage: 100MB+")
+            
+            ContainerDb(android_db, "Local Database", "SQLite + SQLCipher", "Encrypted credential storage\n\nEncryption: AES-256\nSize: Variable (10MB-1GB)")
+        }
+        
+        Deployment_Node(android_keystore, "Android Keystore", "Hardware-backed / StrongBox") {
+            Container(android_keys, "Private Keys", "TEE / Secure Element", "Ed25519, Secp256k1, X25519 keys\n\nHardware protection\nBiometric-bound keys")
+        }
+    }
+    
+    Deployment_Node(ios_device, "iOS Device", "iOS 14+ / iPadOS 14+") {
+        Deployment_Node(ios_runtime, "iOS Runtime", "JavaScriptCore / Hermes") {
+            Container(ios_app, "Sphereon Wallet", "React Native / Native Swift", "Mobile wallet application\n\nApp Size: ~35MB\nMin RAM: 2GB\nStorage: 100MB+")
+            
+            ContainerDb(ios_db, "Local Database", "SQLite + SQLCipher", "Encrypted credential storage\n\nEncryption: AES-256\nSize: Variable (10MB-1GB)")
+        }
+        
+        Deployment_Node(ios_keychain, "iOS Keychain", "Secure Enclave") {
+            Container(ios_keys, "Private Keys", "Secure Enclave (SEP)", "Ed25519, Secp256k1, X25519 keys\n\nHardware isolation\nBiometric-protected")
+        }
+    }
+}
+
+' =============================
+' CLOUD INFRASTRUCTURE - DIDCOMM MEDIATOR
+' =============================
+
+Deployment_Node(cloud_infra, "Cloud Infrastructure", "AWS / Azure / GCP") {
+    
+    Deployment_Node(kubernetes, "Kubernetes Cluster", "K8s 1.27+") {
+        
+        Deployment_Node(ingress, "Ingress Layer", "NGINX Ingress") {
+            Container(load_balancer, "Load Balancer", "NGINX", "TLS termination\nRate limiting\nDDoS protection\n\nCapacity: 10K req/s")
+        }
+        
+        Deployment_Node(mediator_pods, "Mediator Service", "Pod Replicas (3+)") {
+            Container(mediator_svc, "DIDComm Mediator", "Node.js / Go", "Message routing service\n\nProtocols:\n• RFC 0211 (Mediation)\n• RFC 0212 (Pickup)\n• DIDComm v2\n\nFeatures:\n• WebSocket support\n• Message queueing\n• Multi-device routing")
+        }
+        
+        Deployment_Node(api_pods, "API Service", "Pod Replicas (2+)") {
+            Container(api_svc, "REST API", "Node.js / Express", "HTTP endpoints\n\n• Health checks\n• Metrics\n• Status endpoints")
+        }
+    }
+    
+    Deployment_Node(redis_cluster, "Redis Cluster", "Redis 7.0+") {
+        ContainerDb(message_queue, "Message Queue", "Redis Streams", "Pending messages\nMessage routing table\n\nPersistence: AOF\nReplication: 3 nodes")
+        
+        ContainerDb(session_store, "Session Store", "Redis", "Active connections\nWebSocket sessions\n\nTTL: Configurable")
+    }
+    
+    Deployment_Node(postgres_cluster, "PostgreSQL Cluster", "PostgreSQL 15+") {
+        ContainerDb(mediator_db, "Mediator Database", "PostgreSQL", "Routing keys\nDID mappings\nMessage metadata\n\nHA: Primary + Replica\nBackup: Daily")
+    }
+    
+    Deployment_Node(monitoring, "Monitoring Stack", "Observability") {
+        Container(prometheus, "Prometheus", "Metrics", "Time-series metrics\n• Request rates\n• Error rates\n• Latency")
+        
+        Container(grafana, "Grafana", "Dashboards", "Visualization\n• Real-time dashboards\n• Alerting")
+        
+        Container(jaeger, "Jaeger", "Tracing", "Distributed tracing\n• Request flows\n• Performance")
+    }
+}
+
+' =============================
+' BLOCKCHAIN INFRASTRUCTURE
+' =============================
+
+Deployment_Node(blockchain_infra, "Blockchain Infrastructure", "Distributed Networks") {
+    
+    Deployment_Node(sovrin_network, "Sovrin Network", "Hyperledger Indy") {
+        Deployment_Node(sovrin_nodes, "Validator Nodes", "4+ Nodes across regions") {
+            Container(sovrin_validator, "Indy Validator", "Indy Node", "DID Documents\nSchemas\nCred Definitions\nRevocation Registries\n\nConsensus: PBFT")
+        }
+    }
+    
+    Deployment_Node(ion_network, "ION Network", "Bitcoin L2") {
+        Container(ion_node, "ION Node", "Sidetree Protocol", "Bitcoin-anchored DIDs\n\nIPFS: Content storage\nBitcoin: Anchoring")
+    }
+    
+    Deployment_Node(ebsi_network, "EBSI Network", "European Blockchain") {
+        Container(ebsi_node, "EBSI Node", "Hyperledger Besu", "EU Trusted Registry\nDID Registry\nTimestamp Service")
+    }
+}
+
+' =============================
+' ENTERPRISE SERVICES
+' =============================
+
+Deployment_Node(microsoft_cloud, "Microsoft Azure", "Cloud Platform") {
+    Deployment_Node(entra_service, "Azure Active Directory", "Identity Platform") {
+        Container(entra_vid, "Entra Verified ID", "Enterprise VC Platform", "Request API\nIssuance Service\nVerification Service\n\nIntegration: Azure AD")
+    }
+}
+
+Deployment_Node(sphereon_cloud, "Sphereon Infrastructure", "AWS") {
+    Deployment_Node(vdx_cluster, "VDX Platform", "ECS / EKS") {
+        Container(vdx_platform, "VDX Service", "Enterprise Platform", "Workflow Engine\nPolicy Engine\nAnalytics\nAPI Gateway")
+    }
+}
+
+' =============================
+' SUPPORTING SERVICES
+' =============================
+
+Deployment_Node(public_services, "Public Services", "Internet") {
+    Container(universal_resolver, "Universal DID Resolver", "Web Service", "Multi-method DID resolution\n\nMethods: 30+\nHA: Global CDN\nCaching: Aggressive")
+    
+    Container(oca_repo, "OCA Repository", "Static Server", "Credential branding bundles\n\nStorage: CDN\nFormats: JSON + Assets")
+}
+
+Deployment_Node(push_infra, "Push Notification Services", "Third-party") {
+    Container(fcm_service, "Firebase Cloud Messaging", "Google Cloud", "Android push notifications\n\nDelivery: High priority\nRetry: Automatic")
+    
+    Container(apns_service, "Apple Push Notification", "Apple Cloud", "iOS push notifications\n\nDelivery: Production\nCertificate: Annual renewal")
+}
+
+Deployment_Node(app_distribution, "App Distribution", "App Stores") {
+    Container(play_store, "Google Play Store", "Android Distribution", "APK/AAB distribution\nAutomatic updates\nBeta channel")
+    
+    Container(app_store, "Apple App Store", "iOS Distribution", "IPA distribution\nTestFlight beta\nAutomatic updates")
+}
+
+Deployment_Node(cloud_storage, "Cloud Storage", "User Data Backup") {
+    Container(icloud, "iCloud", "Apple Cloud", "Encrypted wallet backups (iOS)\n\nE2E Encryption\nZero-knowledge")
+    
+    Container(gdrive, "Google Drive", "Google Cloud", "Encrypted wallet backups (Android)\n\nE2E Encryption\nZero-knowledge")
+}
+
+' =============================
+' RELATIONSHIPS - MOBILE TO CLOUD
+' =============================
+
+Rel(android_app, load_balancer, "DIDComm messages", "HTTPS/WSS\nPort 443")
+Rel(ios_app, load_balancer, "DIDComm messages", "HTTPS/WSS\nPort 443")
+
+Rel(load_balancer, mediator_svc, "Routes to pods", "HTTP/WebSocket\nInternal")
+Rel(load_balancer, api_svc, "API requests", "HTTP\nInternal")
+
+Rel(mediator_svc, message_queue, "Queue messages", "Redis protocol\nInternal")
+Rel(mediator_svc, session_store, "Session management", "Redis protocol\nInternal")
+Rel(mediator_svc, mediator_db, "Routing data", "PostgreSQL\nInternal")
+
+Rel(mediator_svc, fcm_service, "Trigger Android notifications", "HTTPS\nFCM API")
+Rel(mediator_svc, apns_service, "Trigger iOS notifications", "HTTP/2\nAPNs API")
+
+' =============================
+' RELATIONSHIPS - MOBILE TO BLOCKCHAIN
+' =============================
+
+Rel(android_app, sovrin_validator, "Read schemas/cred defs", "HTTPS\nIndy API")
+Rel(android_app, ion_node, "Resolve did:ion", "HTTPS\nION API")
+Rel(android_app, ebsi_node, "EBSI operations", "HTTPS\nEBSI API")
+
+Rel(ios_app, sovrin_validator, "Read schemas/cred defs", "HTTPS\nIndy API")
+Rel(ios_app, ion_node, "Resolve did:ion", "HTTPS\nION API")
+Rel(ios_app, ebsi_node, "EBSI operations", "HTTPS\nEBSI API")
+
+' =============================
+' RELATIONSHIPS - MOBILE TO SERVICES
+' =============================
+
+Rel(android_app, universal_resolver, "DID resolution", "HTTPS\nDID Resolution API")
+Rel(ios_app, universal_resolver, "DID resolution", "HTTPS\nDID Resolution API")
+
+Rel(android_app, oca_repo, "Fetch OCA bundles", "HTTPS\nCDN")
+Rel(ios_app, oca_repo, "Fetch OCA bundles", "HTTPS\nCDN")
+
+Rel(android_app, entra_vid, "Enterprise credentials", "HTTPS\nEntra API\nOAuth2")
+Rel(ios_app, entra_vid, "Enterprise credentials", "HTTPS\nEntra API\nOAuth2")
+
+Rel(android_app, vdx_platform, "B2B workflows", "HTTPS\nVDX API")
+Rel(ios_app, vdx_platform, "B2B workflows", "HTTPS\nVDX API")
+
+' =============================
+' RELATIONSHIPS - BACKUP
+' =============================
+
+Rel(ios_app, icloud, "Encrypted backup", "HTTPS\niCloud API")
+Rel(android_app, gdrive, "Encrypted backup", "HTTPS\nDrive API")
+
+' =============================
+' RELATIONSHIPS - DISTRIBUTION
+' =============================
+
+Rel(android_app, play_store, "Check updates", "HTTPS\nPlay API")
+Rel(ios_app, app_store, "Check updates", "HTTPS\nApp Store")
+
+' =============================
+' RELATIONSHIPS - MONITORING
+' =============================
+
+Rel(mediator_svc, prometheus, "Export metrics", "Prometheus exporter\nPort 9090")
+Rel(api_svc, prometheus, "Export metrics", "Prometheus exporter")
+Rel(prometheus, grafana, "Data source", "HTTP API")
+Rel(mediator_svc, jaeger, "Trace spans", "OpenTelemetry\nUDP")
+
+SHOW_LEGEND()
+
+note right of kubernetes
+  **Scalability & HA**
+  
+  Horizontal Pod Autoscaling:
+  • Min replicas: 3
+  • Max replicas: 20
+  • Target CPU: 70%
+  • Target Memory: 80%
+  
+  Multi-region deployment:
+  • Primary: US-East
+  • Secondary: EU-West
+  • Tertiary: Asia-Pacific
+  
+  Failover: Automatic
+  RTO: < 5 minutes
+  RPO: Near-zero
+end note
+
+note left of android_keystore
+  **Security Zones**
+  
+  **Hardware Security:**
+  • Android: Keystore (TEE)
+  • iOS: Secure Enclave (SEP)
+  
+  **Features:**
+  • Keys never leave hardware
+  • Biometric binding
+  • Attestation support
+  
+  **Threat Protection:**
+  • Anti-tampering
+  • Root/Jailbreak detection
+  • Secure boot chain
+end note
+
+note bottom of blockchain_infra
+  **Blockchain Network Topology**
+  
+  Sovrin: 25+ validator nodes globally
+  ION: 100+ nodes (public Bitcoin)
+  EBSI: EU member state nodes
+  
+  Read operations: Direct to nodes
+  Write operations: Via ledger services
+  
+  Redundancy: Multiple node connections
+  Caching: Aggressive (schemas/cred defs)
+end note
+
+@enduml

@@ -1,0 +1,73 @@
+@startuml Sphereon Wallet - Security Layer
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: Security Layer\n[Complete Security Architecture with Authentication, Encryption, and Protection]
+
+Container_Boundary(security_layer, "Security Layer") {
+    
+    Container_Boundary(authentication, "Authentication System") {
+        Component(auth_manager, "Authentication Manager", "Auth Orchestrator", "Coordinate authentication: check status, biometric/PIN fallback, session creation, logout. Session management with timeout/inactivity")
+        
+        Component(pin_manager, "PIN Manager", "PIN Authentication", "PIN-based authentication: create/verify with Argon2id, validate strength, progressive delays, lock after 5 failures (30min)")
+        
+        Component(biometric_manager, "Biometric Manager", "Biometric Authentication", "Face ID, Touch ID, Fingerprint: check availability, authenticate with reason, biometric-protected keys in Keychain/Keystore")
+        
+        Component(session_manager, "Session Manager", "Session Control", "Session lifecycle: create/destroy, lock/unlock, auto-lock on background/device lock, inactivity timer, activity tracking")
+    }
+    
+    Container_Boundary(data_encryption, "Data Encryption System") {
+        Component(encryption_manager, "Encryption Manager", "Encryption Orchestrator", "Master key management, data encryption/decryption with AES-256-GCM, HKDF key derivation per purpose, key rotation")
+        
+        Component(database_encryption, "Database Encryption", "SQLCipher", "Encrypted database with SQLCipher: PBKDF2-HMAC-SHA512, 256k iterations, AES-256-CBC, page-level encryption")
+        
+        Component(field_encryption, "Field-Level Encryption", "Selective Encryption", "Encrypt sensitive fields: credential JSON, private keys, mnemonics, messages, personal data. Per-record keys with wrapping")
+    }
+    
+    Container_Boundary(network_security, "Network Security") {
+        Component(tls_manager, "TLS Manager", "Transport Security", "TLS/SSL enforcement: reject invalid certs, TLS 1.3, strong ciphers. Certificate pinning, MITM detection, HSTS")
+        
+        Component(network_monitor, "Network Monitor", "Traffic Analysis", "Monitor network traffic: request logging, anomaly detection (excessive requests, unusual endpoints, failed auth), network conditions")
+    }
+    
+    Container_Boundary(code_security, "Code Security") {
+        Component(tamper_detection, "Tamper Detection", "Integrity Checks", "Detect app tampering: root/jailbreak detection, file system checks, hook detection, debug mode checks")
+        
+        Component(obfuscation, "Code Obfuscation", "Code Protection", "Protect source code: ProGuard/R8 (Android), Hermes bytecode (React Native), compiled bytecode, smaller bundles")
+        
+        Component(secure_logging, "Secure Logging", "Log Management", "Secure logging: production ERROR level only, redact sensitive data (keys, mnemonics, PINs, tokens, PII), safe log to file")
+    }
+}
+
+System_Ext(ios_keychain, "iOS Keychain", "Secure credential storage")
+System_Ext(android_keystore, "Android Keystore", "Hardware-backed key storage")
+System_Ext(biometric_hardware, "Biometric Hardware", "Face ID, Touch ID, Fingerprint")
+
+Rel(auth_manager, pin_manager, "Verifies PIN")
+Rel(auth_manager, biometric_manager, "Authenticates biometric")
+Rel(auth_manager, session_manager, "Manages session")
+
+Rel(pin_manager, ios_keychain, "Stores PIN hash")
+Rel(pin_manager, android_keystore, "Stores PIN hash")
+
+Rel(biometric_manager, biometric_hardware, "Authenticates")
+Rel(biometric_manager, ios_keychain, "Stores biometric keys")
+Rel(biometric_manager, android_keystore, "Stores biometric keys")
+
+Rel(session_manager, auth_manager, "Checks auth")
+
+Rel(encryption_manager, ios_keychain, "Gets master key")
+Rel(encryption_manager, android_keystore, "Gets master key")
+Rel(encryption_manager, field_encryption, "Encrypts fields")
+
+Rel(database_encryption, encryption_manager, "Gets DB key")
+
+Rel(tls_manager, network_monitor, "Logs requests")
+
+Rel(tamper_detection, secure_logging, "Logs security events")
+
+SHOW_LEGEND()
+
+@enduml

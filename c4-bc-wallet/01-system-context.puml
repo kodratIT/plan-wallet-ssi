@@ -1,0 +1,44 @@
+@startuml BC Wallet - System Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System Context Diagram for BC Wallet Mobile
+
+Person(user, "BC Resident", "A resident of British Columbia who needs to manage digital credentials")
+Person(issuer_operator, "Credential Issuer", "Organization that issues verifiable credentials")
+Person(verifier_operator, "Verifier", "Service provider that verifies credentials")
+
+System(bc_wallet, "BC Wallet Mobile", "Mobile application for managing Self-Sovereign Identity and Verifiable Credentials")
+
+System_Ext(bcsc, "BC Services Card (BCSC)", "Government identity provider with OAuth2/OIDC authentication (Level 3 assurance)")
+System_Ext(ias, "Identity Assurance Service", "Service for in-person identity verification and credential issuance")
+System_Ext(mediator, "Mediator Service", "Routes DIDComm messages and enables offline message delivery")
+System_Ext(indy_ledger, "Hyperledger Indy Ledger", "Distributed ledger storing schemas, credential definitions, and public DIDs")
+System_Ext(issuer_agent, "Issuer Agent", "Aries-compatible agent that issues credentials")
+System_Ext(verifier_agent, "Verifier Agent", "Aries-compatible agent that requests proofs")
+System_Ext(push_services, "Push Notification Services", "FCM (Android) and APNs (iOS) for notifications")
+System_Ext(app_stores, "App Distribution", "Google Play Store and Apple App Store")
+
+Rel(user, bc_wallet, "Uses", "Mobile app")
+Rel(issuer_operator, issuer_agent, "Operates")
+Rel(verifier_operator, verifier_agent, "Operates")
+
+Rel(bc_wallet, bcsc, "Authenticates with", "OAuth2/OIDC, HTTPS")
+Rel(bc_wallet, ias, "Requests verification", "REST API, HTTPS")
+Rel(bc_wallet, mediator, "Sends/receives messages", "DIDComm, HTTPS/WSS")
+Rel(bc_wallet, indy_ledger, "Reads schemas & cred defs", "Indy API, HTTPS")
+Rel(bc_wallet, push_services, "Receives notifications", "Push protocol")
+Rel(bc_wallet, app_stores, "Downloads updates", "HTTPS")
+
+Rel(issuer_agent, mediator, "Sends credential offers", "DIDComm")
+Rel(verifier_agent, mediator, "Sends proof requests", "DIDComm")
+Rel(mediator, push_services, "Triggers notifications")
+
+Rel(issuer_agent, indy_ledger, "Writes cred defs", "Indy API")
+Rel(verifier_agent, indy_ledger, "Reads public keys", "Indy API")
+Rel(ias, issuer_agent, "Triggers issuance")
+
+SHOW_LEGEND()
+
+@enduml

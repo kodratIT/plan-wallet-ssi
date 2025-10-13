@@ -1,0 +1,211 @@
+@startuml Sphereon Wallet - Container Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Container Diagram for Sphereon Mobile Wallet\n[As the Wallet Creator: High-Level Architecture - Major Building Blocks]
+
+Person(holder, "Credential Holder", "User managing their digital identity")
+Person(issuer, "Issuer", "Organization issuing credentials")
+Person(verifier, "Verifier", "Service requesting proof")
+
+System_Boundary(wallet_system, "Sphereon Mobile Wallet") {
+    
+    ' =============================
+    ' PRESENTATION LAYER
+    ' =============================
+    
+    Container(mobile_app, "Mobile Application", "React Native + Expo 50", "User interface layer\n\n**Responsibilities:**\n• Screen rendering (Compose/SwiftUI for native)\n• User input handling\n• Navigation management\n• State management (Redux)\n• Native module integration\n\n**Key Screens:**\n• Onboarding flow\n• Credentials list/details\n• Connections management\n• Proof presentation\n• Settings and security")
+    
+    ' =============================
+    ' BUSINESS LOGIC LAYER
+    ' =============================
+    
+    Container(ssi_sdk_core, "SSI SDK Core", "@sphereon/ssi-sdk-core", "Central SSI orchestration engine\n\n**Responsibilities:**\n• Agent lifecycle management\n• Protocol coordination\n• Event emission\n• Plugin system\n\n**Core Capabilities:**\n• Multi-DID management\n• Credential lifecycle\n• Presentation logic\n• Key management")
+    
+    Container(did_manager, "DID Management Module", "@sphereon/did-resolver", "Decentralized Identifier operations\n\n**Methods Supported:**\n• did:key (Ed25519, Secp256k1)\n• did:jwk (JSON Web Key)\n• did:web (Domain-based)\n• did:ion (Bitcoin-anchored)\n• did:ethr (Ethereum-based)\n• did:ebsi (EBSI network)\n• did:cheqd (Cheqd network)\n\n**Operations:**\n• Create, Import, Export, Delete\n• Resolution with caching\n• Multi-method support")
+    
+    Container(credential_handler, "Credential Handler Module", "@sphereon/ssi-sdk-vc-handler", "Verifiable Credential management\n\n**Format Support:**\n• JWT-VC (JWS signed)\n• JSON-LD VC (Linked Data Proofs)\n• SD-JWT (Selective Disclosure)\n\n**Operations:**\n• Issue (self-issued)\n• Store and organize\n• Verify signatures\n• Check revocation\n• Export/Import")
+    
+    Container(presentation_handler, "Presentation Handler Module", "VP + PEx Engine", "Verifiable Presentation creation\n\n**Capabilities:**\n• Presentation Exchange v2\n• Credential matching\n• Selective disclosure\n• Holder binding\n• Multi-credential presentations\n\n**Supported Formats:**\n• VP-JWT\n• VP-JSON-LD\n• SD-JWT presentations")
+    
+    ' =============================
+    ' PROTOCOL LAYER
+    ' =============================
+    
+    Container(oid4vci_client, "OID4VCI Client", "@sphereon/OID4VCI-client", "OpenID for VC Issuance client\n\n**Flows:**\n• Pre-authorized code flow\n• Authorization code flow (PKCE)\n• Deferred credential flow\n\n**Features:**\n• Issuer metadata discovery\n• Proof of possession (DID)\n• Batch credential request\n• Multiple grant types")
+    
+    Container(oid4vp_client, "OID4VP Client", "OpenID4VP", "OpenID for VP client\n\n**Features:**\n• Presentation Definition parsing\n• Response modes:\n  - direct_post\n  - redirect\n• Cross-device flow\n• VP Token generation\n\n**Integration:**\n• Presentation Exchange engine\n• DID authentication")
+    
+    Container(siop_client, "SIOPv2 Client", "@sphereon/did-auth-siop", "Self-Issued OpenID Provider v2\n\n**Capabilities:**\n• DID-based authentication\n• ID Token generation\n• VP Token in auth response\n• Cross-device flow\n\n**Use Cases:**\n• Login with DID\n• Combined auth + presentation")
+    
+    Container(didcomm_engine, "DIDComm v2 Engine", "@sphereon/didcomm-v2", "Secure peer-to-peer messaging\n\n**Message Types:**\n• Authcrypt (authenticated)\n• Anoncrypt (anonymous)\n• Plaintext (testing)\n\n**Features:**\n• Multi-recipient\n• Forward secrecy\n• Message threading\n• Attachments\n• Routing via mediator")
+    
+    Container(pex_engine, "Presentation Exchange Engine", "@sphereon/pex", "PEx v2 evaluation engine\n\n**Capabilities:**\n• Input descriptor matching\n• Constraint evaluation:\n  - Field constraints\n  - Format constraints\n  - Predicate constraints\n• Submission generation\n• Validation\n\n**Advanced Features:**\n• Credential scoring\n• Multi-path selection")
+    
+    ' =============================
+    ' CRYPTOGRAPHY LAYER
+    ' =============================
+    
+    Container(key_manager, "Key Management System", "@sphereon/ssi-sdk-crypto", "Cryptographic operations\n\n**Key Types:**\n• Ed25519 (EdDSA)\n• Secp256k1 (ES256K)\n• Secp256r1 (ES256)\n• X25519 (ECDH)\n\n**Operations:**\n• Key generation\n• Signing/Verification\n• Encryption/Decryption\n• Key agreement\n\n**Storage:**\n• Hardware-backed (Keystore)\n• Multi-KMS support")
+    
+    ' =============================
+    ' DATA LAYER
+    ' =============================
+    
+    ContainerDb(data_persistence, "Data Persistence Layer", "TypeORM + SQLite", "Local encrypted database\n\n**Entities:**\n• Credentials (encrypted)\n• Connections\n• DIDs and keys\n• Messages\n• Proof requests/history\n\n**Features:**\n• SQLCipher encryption\n• Migration support\n• Relationship mapping\n• Query optimization")
+    
+    Container(secure_storage, "Secure Storage", "Keychain (iOS) / Keystore (Android)", "Hardware-backed secure storage\n\n**Stored Data:**\n• Private keys\n• Mnemonic seed (encrypted)\n• PIN hash\n• Biometric keys\n• Master encryption key\n\n**Features:**\n• Hardware security module\n• Biometric-protected access\n• Secure deletion")
+}
+
+' =============================
+' EXTERNAL SYSTEMS
+' =============================
+
+System_Ext(issuer_system, "Issuer System", "OID4VCI / DIDComm endpoint")
+System_Ext(verifier_system, "Verifier System", "OID4VP / DIDComm endpoint")
+System_Ext(mediator_service, "DIDComm Mediator", "Message routing service")
+System_Ext(ledger_network, "Blockchain Ledger", "Public DID registry")
+System_Ext(universal_resolver_ext, "Universal Resolver", "DID resolution service")
+
+' =============================
+' RELATIONSHIPS - USER TO APP
+' =============================
+
+Rel(holder, mobile_app, "Interacts via UI", "Touch/Gestures\niOS/Android")
+Rel(issuer, issuer_system, "Issues credentials")
+Rel(verifier, verifier_system, "Requests proofs")
+
+' =============================
+' RELATIONSHIPS - APP TO BUSINESS LOGIC
+' =============================
+
+Rel(mobile_app, ssi_sdk_core, "Orchestrates SSI operations", "Function calls\nEvent listeners")
+Rel(mobile_app, oid4vci_client, "Initiates credential issuance", "API calls")
+Rel(mobile_app, oid4vp_client, "Initiates presentation", "API calls")
+Rel(mobile_app, pex_engine, "Matches credentials", "Query API")
+
+' =============================
+' RELATIONSHIPS - SDK CORE INTERNAL
+' =============================
+
+Rel(ssi_sdk_core, did_manager, "Manages DIDs", "Internal API")
+Rel(ssi_sdk_core, credential_handler, "Manages credentials", "Internal API")
+Rel(ssi_sdk_core, presentation_handler, "Creates presentations", "Internal API")
+Rel(ssi_sdk_core, didcomm_engine, "Sends/receives messages", "Internal API")
+Rel(ssi_sdk_core, key_manager, "Cryptographic operations", "Internal API")
+
+' =============================
+' RELATIONSHIPS - DID MANAGER
+' =============================
+
+Rel(did_manager, universal_resolver_ext, "Resolves DIDs", "HTTPS\nDID Resolution protocol")
+Rel(did_manager, ledger_network, "Reads DID Documents", "HTTPS\nBlockchain API")
+Rel(did_manager, key_manager, "Key operations for DIDs", "Internal")
+Rel(did_manager, data_persistence, "Stores DIDs", "SQL queries")
+
+' =============================
+' RELATIONSHIPS - CREDENTIAL HANDLER
+' =============================
+
+Rel(credential_handler, key_manager, "Signs/Verifies credentials", "Crypto API")
+Rel(credential_handler, did_manager, "Resolves issuer DIDs", "Resolution API")
+Rel(credential_handler, data_persistence, "Stores credentials", "ORM")
+Rel(credential_handler, ledger_network, "Reads schemas/cred defs", "HTTPS")
+
+' =============================
+' RELATIONSHIPS - PRESENTATION HANDLER
+' =============================
+
+Rel(presentation_handler, pex_engine, "Evaluates presentation requests", "PEx API")
+Rel(presentation_handler, credential_handler, "Retrieves credentials", "Query API")
+Rel(presentation_handler, key_manager, "Signs presentations", "Crypto API")
+Rel(presentation_handler, did_manager, "Holder DID operations", "DID API")
+
+' =============================
+' RELATIONSHIPS - OPENID CLIENTS
+' =============================
+
+Rel(oid4vci_client, credential_handler, "Receives credentials", "VC Handler API")
+Rel(oid4vci_client, key_manager, "Proof of possession", "Signing")
+Rel(oid4vci_client, did_manager, "Holder DID", "DID operations")
+Rel(oid4vci_client, issuer_system, "Credential request", "HTTPS\nOAuth2 + OID4VCI")
+
+Rel(oid4vp_client, presentation_handler, "Generates presentations", "VP Handler API")
+Rel(oid4vp_client, pex_engine, "Processes presentation definitions", "PEx API")
+Rel(oid4vp_client, verifier_system, "Submits presentations", "HTTPS\nOID4VP")
+
+Rel(siop_client, did_manager, "DID authentication", "DID operations")
+Rel(siop_client, key_manager, "Signs ID Tokens", "Crypto API")
+Rel(siop_client, presentation_handler, "Optional VP in response", "VP API")
+Rel(siop_client, verifier_system, "Authentication", "HTTPS\nSIOPv2")
+
+' =============================
+' RELATIONSHIPS - DIDCOMM ENGINE
+' =============================
+
+Rel(didcomm_engine, key_manager, "Message encryption/decryption", "Crypto API\nAuthcrypt/Anoncrypt")
+Rel(didcomm_engine, did_manager, "Resolve recipient DIDs", "DID resolution")
+Rel(didcomm_engine, mediator_service, "Routes messages", "HTTPS/WSS\nRFC 0211/0212")
+Rel(didcomm_engine, data_persistence, "Stores messages", "ORM")
+
+Rel(issuer_system, mediator_service, "Sends credential offers", "DIDComm v2")
+Rel(verifier_system, mediator_service, "Sends proof requests", "DIDComm v2")
+
+' =============================
+' RELATIONSHIPS - PRESENTATION EXCHANGE
+' =============================
+
+Rel(pex_engine, data_persistence, "Queries credentials", "SQL queries")
+Rel(pex_engine, credential_handler, "Credential metadata", "Metadata API")
+
+' =============================
+' RELATIONSHIPS - KEY MANAGER
+' =============================
+
+Rel(key_manager, secure_storage, "Stores private keys", "Keychain/Keystore API\nHardware-backed")
+
+' =============================
+' RELATIONSHIPS - DATA PERSISTENCE
+' =============================
+
+Rel(data_persistence, secure_storage, "Master encryption key", "Encrypted storage")
+
+SHOW_LEGEND()
+
+note right of ssi_sdk_core
+  **SSI SDK Architecture**
+  
+  Modular plugin-based system:
+  • Core orchestration
+  • Protocol handlers (plugins)
+  • Event-driven communication
+  • Extensible via plugins
+  
+  All protocols are plugins:
+  • OID4VCI plugin
+  • OID4VP plugin
+  • DIDComm plugin
+  • Custom protocols possible
+end note
+
+note left of secure_storage
+  **Security Boundaries**
+  
+  Three security zones:
+  
+  1. **Hardware (TEE/SE):**
+     - Private keys
+     - Biometric keys
+  
+  2. **Encrypted Storage:**
+     - Credentials
+     - Database
+     - Mnemonic seed
+  
+  3. **Application Memory:**
+     - Decrypted data (temporary)
+     - UI state
+end note
+
+@enduml

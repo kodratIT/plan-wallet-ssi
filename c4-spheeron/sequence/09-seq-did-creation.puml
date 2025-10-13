@@ -1,0 +1,974 @@
+@startuml 09-seq-did-creation
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title DID Creation for Different Methods\n**Comparing did:key, did:web, did:ion, and did:ethr**
+
+actor "User" as User
+participant "Settings UI" as Settings
+participant "DID\nManager" as DIDMgr
+participant "Key\nManager" as KeyMgr
+participant "DID\nRegistrar" as Registrar
+participant "Secure\nStorage" as Storage
+database "Database" as DB
+
+box "Method-Specific Providers" #LightBlue
+  participant "did:key\nProvider" as KeyProvider
+  participant "did:web\nProvider" as WebProvider
+  participant "did:ion\nProvider" as IONProvider
+  participant "did:ethr\nProvider" as EthrProvider
+end box
+
+box "External Services" #LightGreen
+  participant "Web\nServer" as WebServer
+  participant "ION\nNode" as IONNode
+  participant "IPFS" as IPFS
+  participant "Bitcoin\nBlockchain" as Bitcoin
+  participant "Ethereum\nNetwork" as Ethereum
+  participant "DIDRegistry\nContract" as Contract
+end box
+
+== User Initiates DID Creation ==
+
+User -> Settings: Navigate to Settings
+activate Settings
+Settings -> Settings: Display identity management
+User -> Settings: Click "Create New DID"
+Settings -> User: Show DID method selection
+
+note right of Settings
+  **DID Method Selection:**
+  
+  Choose identity type:
+  
+  ○ did:key (Instant, offline)
+    ➜ No registration needed
+    ➜ Free
+    ➜ Perfect for testing
+  
+  ○ did:web (Domain-based)
+    ➜ Requires domain ownership
+    ➜ Professional identity
+  
+  ○ did:ion (Bitcoin-anchored)
+    ➜ Decentralized
+    ➜ Tamper-proof
+    ➜ Takes ~30-60 minutes
+  
+  ○ did:ethr (Ethereum-based)
+    ➜ Smart contract
+    ➜ Requires ETH for gas
+    ➜ Takes ~2-5 minutes
+end note
+
+User -> Settings: Select DID method
+
+Settings -> DIDMgr: createDID(method, params)
+activate DIDMgr
+
+DIDMgr -> DIDMgr: Route to method provider
+
+== METHOD 1: Create did:key (Instant) ==
+
+alt Method = did:key
+  
+  DIDMgr -> KeyProvider: createDidKey()
+  activate KeyProvider
+  
+  note right of KeyProvider
+    **did:key Method:**
+    
+    • Simplest DID method
+    • DID derived directly from public key
+    • No blockchain, no registration
+    • Instant creation
+    • Offline capable
+    • Format: did:key:z<base58_public_key>
+    
+    Use cases:
+    • Quick testing
+    • Temporary identities
+    • P2P communication
+  end note
+  
+  KeyProvider -> KeyMgr: generateKeyPair(type: "Ed25519")
+  activate KeyMgr
+  
+  KeyMgr -> KeyMgr: Generate Ed25519 key pair
+  note right of KeyMgr
+    **Key Generation:**
+    • Algorithm: Ed25519
+    • Private key: 32 bytes
+    • Public key: 32 bytes
+    • Curve: Curve25519
+  end note
+  
+  KeyMgr -> Storage: Store private key (encrypted)
+  activate Storage
+  Storage --> KeyMgr: key_id
+  deactivate Storage
+  
+  KeyMgr --> KeyProvider: public_key, key_id
+  deactivate KeyMgr
+  
+  KeyProvider -> KeyProvider: Encode public key\n(multibase base58btc)
+  
+  note right of KeyProvider
+    **Public Key Encoding:**
+    
+    1. Multicodec prefix: 0xed01 (Ed25519)
+    2. Append public key bytes
+    3. Encode with base58btc
+    4. Prefix with 'z'
+    
+    Result:
+    z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP
+  end note
+  
+  KeyProvider -> KeyProvider: Create DID:\ndid:key:z<encoded_key>
+  
+  KeyProvider -> KeyProvider: Generate DID document
+  
+  note right of KeyProvider
+    **DID Document (did:key):**
+    {
+      "id": "did:key:z6Mkf...",
+      "verificationMethod": [{
+        "id": "did:key:z6Mkf...#z6Mkf...",
+        "type": "Ed25519VerificationKey2020",
+        "controller": "did:key:z6Mkf...",
+        "publicKeyMultibase": "z6Mkf..."
+      }],
+      "authentication": ["did:key:z6Mkf...#z6Mkf..."],
+      "assertionMethod": ["did:key:z6Mkf...#z6Mkf..."],
+      "keyAgreement": [{
+        "id": "did:key:z6Mkf...#z6LSb...",
+        "type": "X25519KeyAgreementKey2020",
+        "controller": "did:key:z6Mkf...",
+        "publicKeyMultibase": "z6LSb..."
+      }]
+    }
+    
+    Note: DID document is derived from DID
+    No need to store or host separately
+  end note
+  
+  KeyProvider -> DB: Store DID metadata
+  activate DB
+  
+  note right of DB
+    **Storage:**
+    • did: "did:key:z6Mkf..."
+    • method: "key"
+    • key_id: reference to private key
+    • created_at: timestamp
+    • status: "active"
+  end note
+  
+  DB --> KeyProvider: stored
+  deactivate DB
+  
+  KeyProvider --> DIDMgr: did, did_document
+  deactivate KeyProvider
+  
+  DIDMgr --> Settings: DID created successfully
+  
+  Settings -> User: ✓ did:key created instantly!
+  
+  note right of Settings
+    **Success:**
+    
+    ✓ DID Created!
+    
+    did:key:z6Mkf5rGMoatrSj...
+    
+    • Type: Ed25519
+    • Status: Active
+    • Created: Just now
+    
+    Ready to use immediately!
+    
+    [View Details] [Done]
+  end note
+
+end
+
+== METHOD 2: Create did:web (Domain-based) ==
+
+alt Method = did:web
+  
+  note right of User
+    User must own a domain
+    and have ability to host files
+  end note
+  
+  DIDMgr -> WebProvider: createDidWeb(domain)
+  activate WebProvider
+  
+  WebProvider -> User: Enter your domain
+  activate User
+  
+  note right of WebProvider
+    **Domain Input:**
+    
+    Enter domain you control:
+    [example.com]
+    
+    Or subdirectory:
+    [example.com/users/alice]
+    
+    You'll need to host a DID document
+    at: /.well-known/did.json
+  end note
+  
+  User -> WebProvider: domain = "example.com"
+  deactivate User
+  
+  WebProvider -> WebProvider: Validate domain format
+  
+  WebProvider -> KeyMgr: generateKeyPair(type: "Ed25519")
+  activate KeyMgr
+  KeyMgr -> KeyMgr: Generate key pair
+  KeyMgr -> Storage: Store private key
+  activate Storage
+  Storage --> KeyMgr: key_id
+  deactivate Storage
+  KeyMgr --> WebProvider: public_key, key_id
+  deactivate KeyMgr
+  
+  WebProvider -> WebProvider: Create DID:\ndid:web:example.com
+  
+  note right of WebProvider
+    **did:web Format:**
+    
+    Domain: example.com
+    → DID: did:web:example.com
+    
+    Domain with path: example.com/users/alice
+    → DID: did:web:example.com:users:alice
+    
+    Domain with port: example.com:3000
+    → DID: did:web:example.com%3A3000
+  end note
+  
+  WebProvider -> WebProvider: Build DID document
+  
+  note right of WebProvider
+    **DID Document (did:web):**
+    {
+      "@context": [
+        "https://www.w3.org/ns/did/v1",
+        "https://w3id.org/security/suites/ed25519-2020/v1"
+      ],
+      "id": "did:web:example.com",
+      "verificationMethod": [{
+        "id": "did:web:example.com#key-1",
+        "type": "Ed25519VerificationKey2020",
+        "controller": "did:web:example.com",
+        "publicKeyMultibase": "z6Mkf..."
+      }],
+      "authentication": ["#key-1"],
+      "assertionMethod": ["#key-1"],
+      "service": [{
+        "id": "#website",
+        "type": "LinkedDomains",
+        "serviceEndpoint": "https://example.com"
+      }]
+    }
+  end note
+  
+  WebProvider -> WebProvider: Export DID document JSON
+  
+  WebProvider -> User: Display instructions
+  activate User
+  
+  note right of WebProvider
+    **Setup Instructions:**
+    
+    To activate did:web:example.com:
+    
+    1. Download this file:
+       [Download did.json]
+    
+    2. Host it at:
+       https://example.com/.well-known/did.json
+    
+    3. Ensure HTTPS is enabled
+    
+    4. Ensure CORS allows access:
+       Access-Control-Allow-Origin: *
+    
+    5. Click "Verify" when done
+    
+    [Download] [Verify Setup]
+  end note
+  
+  User -> User: Download did.json
+  User -> WebServer: Upload to\nhttps://example.com/.well-known/did.json
+  activate WebServer
+  WebServer -> WebServer: Host file
+  deactivate WebServer
+  
+  User -> WebProvider: Click "Verify Setup"
+  deactivate User
+  
+  WebProvider -> WebProvider: Attempt to resolve:\nhttps://example.com/.well-known/did.json
+  
+  WebProvider -> WebServer: GET /.well-known/did.json
+  activate WebServer
+  
+  alt File accessible
+    WebServer --> WebProvider: did.json content
+    deactivate WebServer
+    
+    WebProvider -> WebProvider: Parse JSON
+    WebProvider -> WebProvider: Verify DID matches
+    WebProvider -> WebProvider: Verify signature
+    
+    WebProvider -> DB: Store DID metadata
+    activate DB
+    note right of DB
+      **Storage:**
+      • did: "did:web:example.com"
+      • method: "web"
+      • domain: "example.com"
+      • key_id: reference
+      • status: "active"
+      • verified_at: timestamp
+    end note
+    DB --> WebProvider: stored
+    deactivate DB
+    
+    WebProvider --> DIDMgr: DID created & verified
+    DIDMgr --> Settings: Success
+    
+    Settings -> User: ✓ did:web verified!
+    
+    note right of Settings
+      **Success:**
+      
+      ✓ DID Verified!
+      
+      did:web:example.com
+      
+      • Hosted at: example.com
+      • Status: Active & Verified
+      • Created: Just now
+      
+      Your DID is now resolvable!
+      
+      [Done]
+    end note
+  
+  else File not accessible
+    WebServer --> WebProvider: 404 Not Found
+    deactivate WebServer
+    
+    WebProvider -> User: Error: Cannot verify
+    
+    note right of WebProvider
+      **Error:**
+      
+      ✗ Cannot access DID document
+      
+      Please ensure:
+      • File is at /.well-known/did.json
+      • HTTPS is enabled
+      • File is publicly accessible
+      • CORS is configured
+      
+      [Retry] [Cancel]
+    end note
+    
+    User -> WebProvider: Retry or Cancel
+  end
+  
+  deactivate WebProvider
+
+end
+
+== METHOD 3: Create did:ion (Bitcoin-anchored) ==
+
+alt Method = did:ion
+  
+  note right of User
+    ION is a Layer 2 DID network
+    anchored to Bitcoin blockchain.
+    
+    Takes ~30-60 minutes for full registration.
+  end note
+  
+  DIDMgr -> IONProvider: createDidIon()
+  activate IONProvider
+  
+  IONProvider -> User: Confirm creation
+  activate User
+  
+  note right of IONProvider
+    **ION DID Creation:**
+    
+    This will create a decentralized identity
+    anchored to Bitcoin blockchain.
+    
+    • Cost: FREE (no Bitcoin transaction)
+    • Time: 30-60 minutes for full anchor
+    • Usable immediately with long-form DID
+    • Becomes short-form after anchoring
+    
+    Continue?
+    [Cancel] [Create DID]
+  end note
+  
+  User -> IONProvider: Create DID
+  deactivate User
+  
+  IONProvider -> KeyMgr: Generate recovery key pair
+  activate KeyMgr
+  KeyMgr -> KeyMgr: Generate Ed25519 (recovery)
+  KeyMgr -> Storage: Store recovery key
+  activate Storage
+  Storage --> KeyMgr: recovery_key_id
+  deactivate Storage
+  KeyMgr --> IONProvider: recovery_public_key
+  deactivate KeyMgr
+  
+  IONProvider -> KeyMgr: Generate update key pair
+  activate KeyMgr
+  KeyMgr -> KeyMgr: Generate Ed25519 (update)
+  KeyMgr -> Storage: Store update key
+  activate Storage
+  Storage --> KeyMgr: update_key_id
+  deactivate Storage
+  KeyMgr --> IONProvider: update_public_key
+  deactivate KeyMgr
+  
+  IONProvider -> KeyMgr: Generate signing key pair
+  activate KeyMgr
+  KeyMgr -> KeyMgr: Generate Ed25519 (signing)
+  KeyMgr -> Storage: Store signing key
+  activate Storage
+  Storage --> KeyMgr: signing_key_id
+  deactivate Storage
+  KeyMgr --> IONProvider: signing_public_key, signing_key_id
+  deactivate KeyMgr
+  
+  note right of IONProvider
+    **ION Key Hierarchy:**
+    
+    1. Recovery Key
+       • Can recover DID if all else lost
+       • Most sensitive
+       • Rarely used
+    
+    2. Update Key
+       • Can update DID document
+       • Add/remove keys
+       • Rotate regularly
+    
+    3. Signing Key(s)
+       • Daily operations
+       • Sign credentials, messages
+       • Can be rotated via update key
+  end note
+  
+  IONProvider -> IONProvider: Build DID document
+  
+  note right of IONProvider
+    **ION DID Document:**
+    {
+      "publicKeys": [{
+        "id": "signing-key",
+        "type": "EcdsaSecp256k1VerificationKey2019",
+        "publicKeyJwk": {...},
+        "purposes": ["authentication", "assertionMethod"]
+      }],
+      "services": [{
+        "id": "domain",
+        "type": "LinkedDomains",
+        "serviceEndpoint": "https://example.com"
+      }]
+    }
+  end note
+  
+  IONProvider -> IONProvider: Create ION create operation
+  
+  note right of IONProvider
+    **ION Create Operation:**
+    {
+      "type": "create",
+      "suffixData": {
+        "deltaHash": "<hash_of_delta>",
+        "recoveryCommitment": "<recovery_key_hash>"
+      },
+      "delta": {
+        "updateCommitment": "<update_key_hash>",
+        "patches": [{
+          "action": "replace",
+          "document": <did_document>
+        }]
+      }
+    }
+    
+    This operation will be submitted to ION
+  end note
+  
+  IONProvider -> IONProvider: Generate long-form DID
+  
+  note right of IONProvider
+    **Long-form DID:**
+    
+    did:ion:EiCZws6U61LV...?
+    -initial-state=<base64_encoded_create_operation>
+    
+    Contains full DID state inline.
+    Usable immediately without blockchain.
+    
+    After anchoring, becomes short-form:
+    did:ion:EiCZws6U61LV...
+  end note
+  
+  IONProvider -> DB: Store DID (long-form initially)
+  activate DB
+  note right of DB
+    **Storage:**
+    • did_longform: "did:ion:EiC...?-initial-state=..."
+    • did_shortform: "did:ion:EiC..." (pending)
+    • method: "ion"
+    • keys: [recovery, update, signing]
+    • status: "pending_anchor"
+    • created_at: timestamp
+  end note
+  DB --> IONProvider: stored
+  deactivate DB
+  
+  IONProvider --> Settings: Long-form DID created (usable now)
+  Settings -> User: ✓ DID created! (anchoring in progress)
+  
+  note right of Settings
+    **DID Created:**
+    
+    ✓ ION DID Created!
+    
+    Long-form DID (usable now):
+    did:ion:EiCZws6...?-initial-state=...
+    
+    Status: Anchoring to Bitcoin...
+    Est. time: 30-60 minutes
+    
+    You can use this DID immediately.
+    It will become short-form after anchoring.
+    
+    [View Status] [Done]
+  end note
+  
+  == Background: ION Anchoring Process ==
+  
+  note over IONProvider, Bitcoin
+    **Background Process:**
+    Wallet continues anchoring in background
+    User can use long-form DID immediately
+  end note
+  
+  IONProvider -> IONNode: Submit create operation
+  activate IONNode
+  
+  note right of IONNode
+    **ION Node:**
+    
+    • Receives create operations
+    • Batches multiple operations
+    • Creates batch file
+    • Anchors batch to Bitcoin
+  end note
+  
+  IONNode -> IONNode: Add to operation queue
+  IONNode -> IONNode: Wait for batch window\n(~10-30 minutes)
+  
+  IONNode -> IONNode: Create batch file\n(many operations together)
+  
+  IONNode -> IPFS: Store batch file
+  activate IPFS
+  IPFS --> IONNode: IPFS CID\n(content hash)
+  deactivate IPFS
+  
+  note right of IPFS
+    **IPFS Storage:**
+    
+    Batch file contains all operations
+    in this batch. Stored on IPFS for
+    distributed access.
+    
+    CID: QmX4f7g2h3k9...
+  end note
+  
+  IONNode -> Bitcoin: Create anchor transaction
+  activate Bitcoin
+  
+  note right of Bitcoin
+    **Bitcoin Transaction:**
+    
+    OP_RETURN output contains:
+    • ION protocol identifier
+    • IPFS CID of batch file
+    
+    Tx confirms in ~10-60 minutes
+    depending on network congestion
+  end note
+  
+  Bitcoin -> Bitcoin: Transaction broadcasted
+  Bitcoin -> Bitcoin: Waiting for confirmation...
+  Bitcoin -> Bitcoin: 1 confirmation ✓
+  
+  Bitcoin --> IONNode: Transaction confirmed
+  deactivate Bitcoin
+  
+  IONNode -> IONNode: Process anchored batch
+  IONNode -> IONNode: Update DID state database
+  
+  IONNode --> IONProvider: Anchor complete
+  deactivate IONNode
+  
+  IONProvider -> IONProvider: Poll ION node for status
+  IONProvider -> IONProvider: Detect anchor complete
+  
+  IONProvider -> DB: Update DID status
+  activate DB
+  DB -> DB: Set status = "active"
+  DB -> DB: Mark shortform available
+  DB --> IONProvider: updated
+  deactivate DB
+  
+  IONProvider -> User: Push notification:\n"ION DID anchored!"
+  
+  note right of User
+    **Notification:**
+    
+    ✓ ION DID Anchored!
+    
+    Your DID is now registered
+    on Bitcoin blockchain.
+    
+    Short-form DID available:
+    did:ion:EiCZws6U61LV...
+    
+    [View Details]
+  end note
+  
+  deactivate IONProvider
+
+end
+
+== METHOD 4: Create did:ethr (Ethereum) ==
+
+alt Method = did:ethr
+  
+  note right of User
+    Ethereum-based DID using
+    ERC-1056 DID Registry smart contract.
+    
+    Requires ETH for gas fees.
+  end note
+  
+  DIDMgr -> EthrProvider: createDidEthr(network)
+  activate EthrProvider
+  
+  EthrProvider -> User: Select Ethereum network
+  activate User
+  
+  note right of EthrProvider
+    **Network Selection:**
+    
+    Choose Ethereum network:
+    
+    ○ Mainnet (production, real ETH)
+    ○ Sepolia (testnet, free)
+    ○ Polygon (L2, cheaper gas)
+    
+    Gas cost estimate: ~0.0003 ETH
+    (Mainnet ~$0.50 USD)
+  end note
+  
+  User -> EthrProvider: Select network = "sepolia"
+  deactivate User
+  
+  EthrProvider -> KeyMgr: Generate Secp256k1 key pair
+  activate KeyMgr
+  
+  note right of KeyMgr
+    **Secp256k1:**
+    
+    Same curve as Ethereum uses.
+    Private key → Ethereum address
+  end note
+  
+  KeyMgr -> KeyMgr: Generate key pair
+  KeyMgr -> Storage: Store private key
+  activate Storage
+  Storage --> KeyMgr: key_id
+  deactivate Storage
+  KeyMgr -> KeyMgr: Derive Ethereum address\nfrom public key
+  
+  note right of KeyMgr
+    **Address Derivation:**
+    
+    1. Public key (uncompressed, 64 bytes)
+    2. Keccak-256 hash
+    3. Take last 20 bytes
+    4. Prefix with 0x
+    
+    Result: 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
+  end note
+  
+  KeyMgr --> EthrProvider: address, key_id
+  deactivate KeyMgr
+  
+  EthrProvider -> EthrProvider: Create DID:\ndid:ethr:sepolia:<address>
+  
+  note right of EthrProvider
+    **did:ethr Format:**
+    
+    did:ethr:<network>:<address>
+    
+    Example:
+    did:ethr:sepolia:0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
+    
+    For mainnet, network is omitted:
+    did:ethr:0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
+  end note
+  
+  EthrProvider -> EthrProvider: Build initial DID document
+  
+  note right of EthrProvider
+    **DID Document (did:ethr):**
+    {
+      "id": "did:ethr:sepolia:0x742d...",
+      "verificationMethod": [{
+        "id": "did:ethr:sepolia:0x742d...#controller",
+        "type": "EcdsaSecp256k1RecoveryMethod2020",
+        "controller": "did:ethr:sepolia:0x742d...",
+        "blockchainAccountId": "eip155:11155111:0x742d..."
+      }],
+      "authentication": ["#controller"],
+      "assertionMethod": ["#controller"]
+    }
+  end note
+  
+  EthrProvider -> Ethereum: Check ETH balance
+  activate Ethereum
+  Ethereum --> EthrProvider: balance
+  deactivate Ethereum
+  
+  alt Balance sufficient
+    
+    EthrProvider -> User: Confirm transaction
+    activate User
+    
+    note right of EthrProvider
+      **Transaction Confirmation:**
+      
+      Register DID on Ethereum
+      
+      Network: Sepolia Testnet
+      Gas estimate: 45,000 gas
+      Gas price: 20 gwei
+      Total cost: ~0.0009 ETH
+      
+      Your balance: 0.05 ETH
+      
+      [Cancel] [Confirm]
+    end note
+    
+    User -> EthrProvider: Confirm
+    deactivate User
+    
+    EthrProvider -> EthrProvider: Build Ethereum transaction
+    
+    note right of EthrProvider
+      **Transaction Details:**
+      
+      To: EthereumDIDRegistry contract
+        (0xd1D374DDE031075157fDb64536eF5cC13Ae75000)
+      
+      Method: setAttribute(
+        identity: <did_address>,
+        name: "did/pub/Secp256k1/veriKey/hex",
+        value: <public_key_hex>,
+        validity: 31536000  // 1 year
+      )
+      
+      This registers public key on-chain
+    end note
+    
+    EthrProvider -> KeyMgr: Sign transaction
+    activate KeyMgr
+    KeyMgr -> KeyMgr: Sign with private key\n(ECDSA)
+    KeyMgr --> EthrProvider: signed_tx
+    deactivate KeyMgr
+    
+    EthrProvider -> Ethereum: Broadcast transaction
+    activate Ethereum
+    
+    Ethereum -> Contract: Call setAttribute()
+    activate Contract
+    
+    note right of Contract
+      **ERC-1056 DIDRegistry:**
+      
+      Contract maintains mapping:
+      address → attributes
+      
+      Stores:
+      • Public keys
+      • Service endpoints
+      • Delegates
+      • Validity periods
+    end note
+    
+    Contract -> Contract: Execute setAttribute
+    Contract -> Contract: Emit DIDAttributeChanged event
+    
+    note right of Contract
+      **Event Emitted:**
+      
+      DIDAttributeChanged(
+        identity: 0x742d...,
+        name: "did/pub/Secp256k1/veriKey/hex",
+        value: <public_key>,
+        validTo: <timestamp>,
+        previousChange: <block_number>
+      )
+    end note
+    
+    Contract --> Ethereum: Transaction success
+    deactivate Contract
+    
+    Ethereum -> Ethereum: Include in block
+    Ethereum -> Ethereum: Wait for confirmation...
+    Ethereum -> Ethereum: Block confirmed ✓
+    
+    Ethereum --> EthrProvider: Transaction receipt
+    deactivate Ethereum
+    
+    note right of Ethereum
+      **Transaction Receipt:**
+      {
+        "transactionHash": "0x1a2b3c...",
+        "blockNumber": 5234567,
+        "gasUsed": 45123,
+        "status": "success"
+      }
+      
+      Confirmation time: ~15 seconds (testnet)
+      Real mainnet: ~15 seconds to 2 minutes
+    end note
+    
+    EthrProvider -> DB: Store DID metadata
+    activate DB
+    note right of DB
+      **Storage:**
+      • did: "did:ethr:sepolia:0x742d..."
+      • method: "ethr"
+      • network: "sepolia"
+      • address: "0x742d..."
+      • key_id: reference
+      • tx_hash: "0x1a2b3c..."
+      • block_number: 5234567
+      • status: "active"
+      • registered_at: timestamp
+    end note
+    DB --> EthrProvider: stored
+    deactivate DB
+    
+    EthrProvider --> DIDMgr: DID registered on-chain
+    DIDMgr --> Settings: Success
+    
+    Settings -> User: ✓ DID registered on Ethereum!
+    
+    note right of Settings
+      **Success:**
+      
+      ✓ DID Registered!
+      
+      did:ethr:sepolia:0x742d35Cc...
+      
+      • Network: Sepolia Testnet
+      • Block: 5234567
+      • Tx: 0x1a2b3c...
+      • Status: Active
+      • Cost: 0.0009 ETH
+      
+      Your DID is now on-chain!
+      
+      [View on Etherscan] [Done]
+    end note
+    
+  else Balance insufficient
+    
+    EthrProvider -> User: Error: Insufficient ETH
+    
+    note right of User
+      **Error:**
+      
+      ✗ Insufficient ETH Balance
+      
+      Required: 0.0009 ETH
+      Your balance: 0.0001 ETH
+      
+      Please add funds to your wallet
+      or use a testnet faucet.
+      
+      [Get Testnet ETH] [Cancel]
+    end note
+    
+  end
+  
+  deactivate EthrProvider
+
+end
+
+deactivate DIDMgr
+deactivate Settings
+
+== Comparison Summary ==
+
+note over User, Ethereum
+  **DID Method Comparison:**
+  
+  ╔════════════╦══════════╦═══════╦═════════════╦═══════════╦═══════════════╗
+  ║ Method     ║ Time     ║ Cost  ║ Registration║ Revocable ║ Use Case      ║
+  ╠════════════╬══════════╬═══════╬═════════════╬═══════════╬═══════════════╣
+  ║ did:key    ║ Instant  ║ Free  ║ None        ║ No        ║ Testing, P2P  ║
+  ║ did:web    ║ Minutes  ║ Free* ║ Web hosting ║ Yes       ║ Organizations ║
+  ║ did:ion    ║ 30-60min ║ Free  ║ Bitcoin     ║ Yes       ║ Long-term IDs ║
+  ║ did:ethr   ║ 2-5min   ║ Gas   ║ Ethereum    ║ Yes       ║ Web3 apps     ║
+  ╚════════════╩══════════╩═══════╩═════════════╩═══════════╩═══════════════╝
+  
+  * did:web requires domain hosting (cost varies)
+  
+  **Trust Models:**
+  • did:key: Self-sovereign (no external dependency)
+  • did:web: Trust in domain owner (DNS, web hosting)
+  • did:ion: Trust in Bitcoin blockchain (most secure)
+  • did:ethr: Trust in Ethereum blockchain
+  
+  **Portability:**
+  • did:key: Fully portable (just a key)
+  • did:web: Tied to domain (not portable)
+  • did:ion: Fully portable (on Bitcoin)
+  • did:ethr: Fully portable (on Ethereum)
+  
+  **Resolution:**
+  • did:key: Computed from DID (no lookup)
+  • did:web: HTTPS GET from domain
+  • did:ion: Query ION node → Bitcoin
+  • did:ethr: Query Ethereum → DIDRegistry contract
+  
+  **Sphereon Wallet Default:**
+  • did:key for quick operations
+  • did:ion for main identity (recommended)
+  • did:web for organizational credentials
+  • did:ethr for Web3 integration
+end note
+
+@enduml

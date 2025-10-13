@@ -1,0 +1,312 @@
+@startuml Sphereon Wallet - UI Layer Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: UI Layer - Complete Breakdown\n[As the Wallet Creator: EVERY UI Component Explained]
+
+Container_Boundary(ui_layer, "UI Layer - React Native + Expo 50") {
+    
+    ' =============================
+    ' APP ENTRY & INITIALIZATION
+    ' =============================
+    
+    Component(app_entry, "App Entry Point", "App.tsx", "Application bootstrap and initialization\n\n**Responsibilities:**\n• Initialize Expo app\n• Setup providers (Theme, i18n, State)\n• Configure navigation\n• Handle app lifecycle\n• Deep link configuration\n• Error boundaries\n\n**Key Libraries:**\n• expo\n• react-native\n• react-navigation")
+    
+    ' =============================
+    ' NAVIGATION SYSTEM
+    ' =============================
+    
+    Container_Boundary(navigation_system, "Navigation System") {
+        Component(app_navigator, "AppNavigator", "Navigation Container", "Root navigation structure\n\n**Navigation Stack:**\n• AuthNavigator (gate)\n• MainNavigator (authenticated)\n• ModalNavigator (overlays)\n\n**Features:**\n• Deep linking\n• Navigation state persistence\n• Screen tracking")
+        
+        Component(auth_navigator, "AuthNavigator", "Stack Navigator", "Authentication flow\n\n**Screens:**\n• OnboardingStack\n• PINEntryScreen\n• BiometricPromptScreen\n\n**Logic:**\n• Checks authentication state\n• Routes to onboarding or main app")
+        
+        Component(main_navigator, "MainNavigator", "Tab Navigator", "Main app navigation\n\n**Tabs:**\n• HomeStack\n• CredentialsStack\n• ConnectionsStack\n• ProofsStack\n• SettingsStack\n\n**Features:**\n• Badge notifications\n• Tab bar customization")
+        
+        Component(modal_navigator, "ModalNavigator", "Modal Stack", "Overlay screens\n\n**Modals:**\n• QR Scanner\n• Credential Offer Review\n• Proof Request Review\n• Connection Request\n• Error/Success dialogs")
+    }
+    
+    ' =============================
+    ' SCREEN COMPONENTS - ONBOARDING
+    ' =============================
+    
+    Container_Boundary(onboarding_screens, "Onboarding Screens") {
+        Component(welcome_screen, "WelcomeScreen", "Screen Component", "Introduction slides\n\n**Content:**\n• 3-4 slides explaining SSI\n• Benefits of self-sovereign identity\n• Privacy features\n\n**Actions:**\n• Skip (if allowed)\n• Next → TermsScreen")
+        
+        Component(terms_screen, "TermsAndConditionsScreen", "Screen Component", "Legal agreements\n\n**Content:**\n• Terms of Service\n• Privacy Policy\n• Data handling notice\n\n**Validation:**\n• Must accept to continue\n• Checkbox validation\n• Version tracking")
+        
+        Component(pin_creation_screen, "PINCreationScreen", "Screen Component", "PIN setup\n\n**Features:**\n• 6-digit PIN input\n• PIN strength indicator\n• Visual feedback\n\n**Validation:**\n• No sequential (123456)\n• No repeated (111111)\n• Minimum entropy")
+        
+        Component(pin_confirm_screen, "PINConfirmationScreen", "Screen Component", "PIN verification\n\n**Logic:**\n• Re-enter PIN\n• Match validation\n• Error feedback\n• Retry limit (3x)")
+        
+        Component(biometric_setup_screen, "BiometricSetupScreen", "Screen Component", "Biometric enrollment\n\n**Features:**\n• Check biometric availability\n• Face ID / Touch ID (iOS)\n• Fingerprint (Android)\n• Option to skip\n• Enable later option")
+        
+        Component(backup_options_screen, "BackupOptionsScreen", "Screen Component", "Backup configuration\n\n**Options:**\n• Cloud backup (iCloud/GDrive)\n• Manual export\n• Skip (not recommended)\n\n**Features:**\n• Encryption explanation\n• Zero-knowledge notice")
+        
+        Component(onboarding_complete_screen, "OnboardingCompleteScreen", "Screen Component", "Completion confirmation\n\n**Content:**\n• Success message\n• Wallet initialization status\n• First DID creation\n\n**Actions:**\n• Go to Home")
+    }
+    
+    ' =============================
+    ' SCREEN COMPONENTS - MAIN APP
+    ' =============================
+    
+    Container_Boundary(main_screens, "Main Application Screens") {
+        
+        ' HOME
+        Component(home_screen, "HomeScreen", "Screen Component", "Dashboard overview\n\n**Sections:**\n• CredentialSummaryCard\n  - Total credentials\n  - Active/Expired/Revoked count\n• RecentActivityList\n  - Recent issuances\n  - Recent presentations\n• QuickActionsMenu\n  - Scan QR\n  - Add credential\n  - Request proof\n• NotificationBadge\n\n**State:**\n• Credential count\n• Recent activity (last 10)\n• Unread notifications")
+        
+        ' CREDENTIALS
+        Component(credentials_list_screen, "CredentialsListScreen", "Screen Component", "Credential list view\n\n**Features:**\n• Search bar\n• Filter by:\n  - Type\n  - Issuer\n  - Status\n  - Date range\n• Sort options\n• Grid/List toggle\n• Pull-to-refresh\n\n**Items:**\n• CredentialCard preview\n• Swipe actions (delete)\n• Long press (options)")
+        
+        Component(credential_detail_screen, "CredentialDetailScreen", "Screen Component", "Credential details\n\n**Sections:**\n• Credential Card (full)\n• Issuer Information\n• Issuance/Expiry dates\n• All attributes (expanded)\n• Revocation status\n• Schema information\n\n**Actions:**\n• Share\n• Export\n• Delete\n• View raw JSON")
+        
+        Component(credential_offer_screen, "CredentialOfferScreen", "Screen Component", "Review credential offer\n\n**Display:**\n• Issuer name + logo\n• Credential type\n• Attribute preview\n• Trust indicators\n\n**Actions:**\n• Accept offer\n• Decline offer\n• View issuer details\n\n**Process:**\n• Loading states\n• Success/Error feedback")
+        
+        ' CONNECTIONS
+        Component(connections_list_screen, "ConnectionsListScreen", "Screen Component", "Connection list\n\n**Display:**\n• Connection cards\n• Status indicators:\n  - Active\n  - Pending\n  - Error\n• Search/Filter\n\n**Actions:**\n• View details\n• Delete connection\n• Refresh")
+        
+        Component(connection_detail_screen, "ConnectionDetailScreen", "Screen Component", "Connection details\n\n**Information:**\n• Their label/name\n• Their DID\n• Connection state\n• Created date\n• Message history\n\n**Actions:**\n• Send message\n• Delete connection")
+        
+        Component(qr_scanner_screen, "QRScannerScreen", "Screen Component", "QR code scanner\n\n**Features:**\n• Camera preview\n• QR detection overlay\n• Flash toggle\n• Gallery import\n\n**Detection:**\n• Connection invitations\n• Credential offers\n• Proof requests\n• Generic URLs\n\n**Parsing:**\n• didcomm:// URLs\n• openid4vci:// URLs\n• openid4vp:// URLs")
+        
+        ' PROOFS
+        Component(proof_request_screen, "ProofRequestScreen", "Screen Component", "Review proof request\n\n**Display:**\n• Verifier information\n• Requested attributes\n• Requested predicates (ZKP)\n• Required credentials\n\n**Sections:**\n• What's being asked\n• Which credentials match\n• Privacy impact\n\n**Actions:**\n• Select credentials\n• Choose attributes\n• Accept/Decline")
+        
+        Component(credential_selection_screen, "CredentialSelectionScreen", "Screen Component", "Select credentials for proof\n\n**Features:**\n• Show matched credentials\n• Multiple credential support\n• Selection UI\n• Preview selected data\n\n**Validation:**\n• All requirements met\n• Credential validity check")
+        
+        Component(attribute_selection_screen, "AttributeSelectionScreen", "Screen Component", "Selective disclosure UI\n\n**Features:**\n• Attribute checkboxes\n• Required vs optional\n• Privacy indicators\n• Disclosure preview\n\n**Selective Disclosure:**\n• Choose what to share\n• Hide unnecessary data\n• ZKP predicates explanation")
+        
+        Component(proof_preview_screen, "ProofPreviewScreen", "Screen Component", "Preview before sending\n\n**Display:**\n• What will be shared\n• Privacy summary\n• Verifier confirmation\n\n**Actions:**\n• Confirm and send\n• Go back to edit\n• Cancel")
+        
+        Component(proof_history_screen, "ProofHistoryScreen", "Screen Component", "Proof presentation history\n\n**List:**\n• Date/time\n• Verifier\n• Disclosed data\n• Status\n\n**Actions:**\n• View details\n• Export history")
+        
+        ' SETTINGS
+        Component(settings_screen, "SettingsScreen", "Screen Component", "App settings menu\n\n**Sections:**\n• General Settings\n• Security Settings\n• Backup & Restore\n• Language\n• Theme\n• About\n• Developer Mode\n\n**Navigation:**\n• Routes to sub-screens")
+        
+        Component(general_settings_screen, "GeneralSettingsScreen", "Screen Component", "General preferences\n\n**Options:**\n• Notifications\n• Default DID\n• Auto-accept connections\n• Data usage\n\n**Toggles:**\n• On/Off switches\n• Immediate save")
+        
+        Component(security_settings_screen, "SecuritySettingsScreen", "Screen Component", "Security configuration\n\n**Options:**\n• Change PIN\n• Toggle biometric\n• Auto-lock timeout:\n  - 30 seconds\n  - 1 minute\n  - 5 minutes\n  - 15 minutes\n  - Never\n• Lock on device lock\n\n**Actions:**\n• PIN change flow\n• Biometric re-enrollment")
+        
+        Component(backup_settings_screen, "BackupSettingsScreen", "Screen Component", "Backup management\n\n**Features:**\n• Manual backup now\n• Auto backup toggle\n• Backup frequency\n• Restore from backup\n• Cloud provider selection\n\n**Status:**\n• Last backup date\n• Backup size\n• Sync status")
+        
+        Component(language_settings_screen, "LanguageSettingsScreen", "Screen Component", "Language selection\n\n**Languages:**\n• English\n• Nederlands (Dutch)\n• Deutsch (German)\n• Svenska (Swedish)\n• Suomi (Finnish)\n\n**Features:**\n• Immediate switch\n• RTL support (future)")
+        
+        Component(theme_settings_screen, "ThemeSettingsScreen", "Screen Component", "Theme customization\n\n**Options:**\n• Light mode\n• Dark mode\n• System default\n\n**Preview:**\n• Live theme preview")
+        
+        Component(developer_settings_screen, "DeveloperSettingsScreen", "Screen Component", "Developer options (hidden)\n\n**Activation:**\n• Tap version 7 times\n\n**Options:**\n• View logs\n• Clear database\n• Export diagnostic data\n• Test connections\n• Mock credentials\n• API endpoint override")
+    }
+    
+    ' =============================
+    ' UI COMPONENT LIBRARY
+    ' =============================
+    
+    Container_Boundary(ui_components, "UI Component Library") {
+        Component(credential_card, "CredentialCard", "Reusable Component", "Beautiful credential display\n\n**Features:**\n• OCA rendering (branding)\n• Issuer logo\n• Credential type\n• Key attributes\n• Status badge (active/expired/revoked)\n• Gradient background\n\n**States:**\n• Normal\n• Expanded\n• Loading\n• Error")
+        
+        Component(connection_card, "ConnectionCard", "Reusable Component", "Connection display card\n\n**Display:**\n• Label/Name\n• Status indicator\n• Last activity\n• Action buttons")
+        
+        Component(buttons, "Button Components", "Reusable Component", "Various button types\n\n**Types:**\n• Primary Button\n• Secondary Button\n• Outline Button\n• Text Button\n• Icon Button\n• FAB (Floating Action)\n\n**States:**\n• Default\n• Pressed\n• Disabled\n• Loading")
+        
+        Component(inputs, "Input Components", "Reusable Component", "Form inputs\n\n**Types:**\n• TextInput\n• PINInput (masked)\n• SearchInput\n• Dropdown/Picker\n• Checkbox\n• Radio\n• Switch/Toggle")
+        
+        Component(modals, "Modal Components", "Reusable Component", "Overlay dialogs\n\n**Types:**\n• Alert (info/warning/error)\n• Confirmation (yes/no)\n• Bottom Sheet\n• Full Screen Modal\n\n**Features:**\n• Backdrop tap to close\n• Custom content\n• Actions (buttons)")
+        
+        Component(lists, "List Components", "Reusable Component", "List rendering\n\n**Types:**\n• FlatList (optimized)\n• SectionList\n• SwipeableList\n\n**Features:**\n• Pull-to-refresh\n• Infinite scroll\n• Empty states\n• Loading skeleton")
+        
+        Component(navigation_components, "Navigation Components", "Reusable Component", "Navigation UI\n\n**Components:**\n• TabBar (custom)\n• Header\n• BackButton\n• Drawer Menu\n\n**Customization:**\n• Badges\n• Icons\n• Colors")
+        
+        Component(feedback_components, "Feedback Components", "Reusable Component", "User feedback\n\n**Components:**\n• Toast (auto-dismiss)\n• Snackbar (action)\n• LoadingSpinner\n• ProgressBar\n• Skeleton Loader\n• Error States\n• Empty States\n• Success Animations")
+    }
+    
+    ' =============================
+    ' THEMING SYSTEM
+    ' =============================
+    
+    Container_Boundary(theming, "Theming System") {
+        Component(theme_provider, "ThemeProvider", "Context Provider", "Theme management\n\n**Provides:**\n• Current theme\n• Theme toggle function\n• Theme values\n\n**Persistence:**\n• Saves to AsyncStorage")
+        
+        Component(color_scheme, "ColorScheme", "Theme Config", "Color definitions\n\n**Light Theme:**\n• Primary: #0078D4\n• Background: #FFFFFF\n• Surface: #F5F5F5\n• Text: #000000\n\n**Dark Theme:**\n• Primary: #50E6FF\n• Background: #000000\n• Surface: #1E1E1E\n• Text: #FFFFFF")
+        
+        Component(typography_system, "TypographySystem", "Font Config", "Text styles\n\n**Sizes:**\n• h1: 32px, Bold\n• h2: 24px, Bold\n• h3: 20px, SemiBold\n• body: 16px, Regular\n• caption: 14px, Regular\n• small: 12px, Regular\n\n**Font Family:**\n• System default\n• Accessibility support")
+        
+        Component(spacing_system, "SpacingSystem", "Layout Config", "Spacing scale\n\n**Scale:**\n• xs: 4px\n• sm: 8px\n• md: 16px\n• lg: 24px\n• xl: 32px\n• xxl: 48px\n\n**Usage:**\n• Padding\n• Margin\n• Gap")
+    }
+    
+    ' =============================
+    ' LOCALIZATION
+    ' =============================
+    
+    Container_Boundary(localization, "Localization System") {
+        Component(i18n_provider, "i18nProvider", "react-i18next", "Translation management\n\n**Features:**\n• Language detection\n• Fallback to English\n• Namespace support\n• Pluralization\n• Interpolation")
+        
+        Component(translation_files, "Translation Files", "JSON Resources", "Language resources\n\n**Files:**\n• en.json (English)\n• nl.json (Nederlands)\n• de.json (Deutsch)\n• sv.json (Svenska)\n• fi.json (Suomi)\n\n**Structure:**\n• Namespaces:\n  - common\n  - screens\n  - errors\n  - credentials")
+        
+        Component(translation_hooks, "Translation Hooks", "React Hooks", "Translation helpers\n\n**Hooks:**\n• useTranslation()\n• useLanguage()\n• useFormatDate()\n• useFormatNumber()")
+    }
+    
+    ' =============================
+    ' STATE MANAGEMENT
+    ' =============================
+    
+    Container_Boundary(state_management, "State Management") {
+        Component(redux_store, "Redux Store", "Redux Toolkit", "Global state container\n\n**Slices:**\n• app (init, loading)\n• credentials\n• connections\n• proofs\n• settings\n• notifications\n\n**Middleware:**\n• Redux Thunk\n• Redux Persist")
+        
+        Component(credentials_slice, "CredentialsSlice", "Redux Slice", "Credential state\n\n**State:**\n{\n  byId: {...},\n  allIds: [...],\n  filters: {...},\n  selectedId: null,\n  loading: false,\n  error: null\n}\n\n**Actions:**\n• addCredential\n• removeCredential\n• updateCredential\n• setFilter")
+        
+        Component(context_providers, "Context Providers", "React Context", "Local state contexts\n\n**Contexts:**\n• AuthContext\n  - isAuthenticated\n  - PIN/Biometric state\n• ThemeContext\n• i18nContext\n• NotificationContext")
+    }
+    
+    ' =============================
+    ' CUSTOM HOOKS
+    ' =============================
+    
+    Container_Boundary(custom_hooks, "Custom React Hooks") {
+        Component(use_credentials, "useCredentials", "React Hook", "Credential operations\n\n**Returns:**\n• credentials: Credential[]\n• loading: boolean\n• error: Error?\n• getCredential(id)\n• acceptOffer(offer)\n• deleteCredential(id)\n• searchCredentials(query)")
+        
+        Component(use_connections, "useConnections", "React Hook", "Connection management\n\n**Returns:**\n• connections: Connection[]\n• acceptInvitation(invitation)\n• deleteConnection(id)\n• sendMessage(id, message)")
+        
+        Component(use_proofs, "useProofs", "React Hook", "Proof operations\n\n**Returns:**\n• proofRequests: ProofRequest[]\n• generateProof(request, selectedCreds)\n• proofHistory: Proof[]\n• loading: boolean")
+        
+        Component(use_did, "useDID", "React Hook", "DID operations\n\n**Returns:**\n• dids: DID[]\n• defaultDid: DID\n• createDID(method, options)\n• setDefaultDID(did)")
+        
+        Component(use_auth, "useAuth", "React Hook", "Authentication state\n\n**Returns:**\n• isAuthenticated: boolean\n• authenticateWithPIN(pin)\n• authenticateWithBiometric()\n• logout()\n• autoLockTimeout")
+        
+        Component(use_qr_scanner, "useQRScanner", "React Hook", "QR scanning\n\n**Returns:**\n• scanning: boolean\n• startScan()\n• stopScan()\n• onScan(callback)\n• parseQR(data)")
+        
+        Component(use_notifications, "useNotifications", "React Hook", "Notifications\n\n**Returns:**\n• notifications: Notification[]\n• unreadCount: number\n• markAsRead(id)\n• clearAll()")
+        
+        Component(use_backup, "useBackup", "React Hook", "Backup operations\n\n**Returns:**\n• lastBackup: Date?\n• createBackup(password)\n• restoreBackup(file, password)\n• autoBackupEnabled: boolean")
+    }
+    
+    ' =============================
+    ' SERVICE LAYER
+    ' =============================
+    
+    Container_Boundary(service_layer, "Service Layer") {
+        Component(credential_service, "CredentialService", "TypeScript Class", "Credential business logic\n\n**Methods:**\n• getAll(): Promise<Credential[]>\n• getById(id): Promise<Credential>\n• acceptOffer(offer): Promise<Credential>\n• delete(id): Promise<void>\n• checkRevocation(id): Promise<Status>")
+        
+        Component(connection_service, "ConnectionService", "TypeScript Class", "Connection logic\n\n**Methods:**\n• getAll(): Promise<Connection[]>\n• acceptInvitation(url): Promise<Connection>\n• sendMessage(id, msg): Promise<void>\n• delete(id): Promise<void>")
+        
+        Component(proof_service, "ProofService", "TypeScript Class", "Proof logic\n\n**Methods:**\n• generateProof(request, creds): Promise<VP>\n• submitProof(vp, endpoint): Promise<Result>\n• getHistory(): Promise<Proof[]>")
+        
+        Component(did_service, "DIDService", "TypeScript Class", "DID operations\n\n**Methods:**\n• create(method, options): Promise<DID>\n• resolve(did): Promise<DIDDoc>\n• import(did, key): Promise<void>\n• export(did): Promise<string>")
+        
+        Component(oid4vci_service, "OID4VCIService", "TypeScript Class", "OID4VCI operations\n\n**Methods:**\n• parseOffer(url): Promise<Offer>\n• requestCredential(offer): Promise<VC>")
+        
+        Component(oid4vp_service, "OID4VPService", "TypeScript Class", "OID4VP operations\n\n**Methods:**\n• parseRequest(url): Promise<Request>\n• submitPresentation(vp): Promise<Result>")
+        
+        Component(didcomm_service, "DIDCommService", "TypeScript Class", "DIDComm operations\n\n**Methods:**\n• sendMessage(to, message): Promise<void>\n• receiveMessage(encrypted): Promise<Message>\n• pickupMessages(): Promise<Message[]>")
+        
+        Component(backup_service, "BackupService", "TypeScript Class", "Backup logic\n\n**Methods:**\n• export(password): Promise<Blob>\n• import(file, password): Promise<void>\n• uploadToCloud(): Promise<void>\n• downloadFromCloud(): Promise<Blob>")
+    }
+    
+    ' =============================
+    ' NATIVE MODULES
+    ' =============================
+    
+    Container_Boundary(native_modules, "Native Modules") {
+        Component(qr_scanner_module, "QRScannerModule", "react-native-camera", "Native QR scanning\n\n**Platform:**\n• iOS: AVFoundation\n• Android: CameraX + ML Kit\n\n**Features:**\n• Real-time detection\n• Flash control\n• Gallery import")
+        
+        Component(biometric_module, "BiometricModule", "expo-local-authentication", "Biometric auth\n\n**Platform:**\n• iOS: Face ID, Touch ID\n• Android: Fingerprint, Face\n\n**Operations:**\n• Check availability\n• Authenticate\n• Enroll")
+        
+        Component(secure_storage_module, "SecureStorageModule", "react-native-keychain", "Encrypted storage\n\n**Platform:**\n• iOS: Keychain\n• Android: Keystore\n\n**Operations:**\n• Store/retrieve\n• Delete\n• Key generation")
+        
+        Component(notification_module, "NotificationModule", "expo-notifications", "Push notifications\n\n**Features:**\n• Register device token\n• Receive notifications\n• Handle notification tap\n• Badge management")
+    }
+}
+
+' =============================
+' EXTERNAL DEPENDENCIES
+' =============================
+
+Container_Ext(ssi_sdk, "SSI SDK Core", "Business logic")
+Container_Ext(async_storage, "AsyncStorage", "Persistent storage")
+System_Ext(fcm_apns, "FCM/APNs", "Push services")
+
+' =============================
+' RELATIONSHIPS
+' =============================
+
+' App entry to navigation
+Rel(app_entry, app_navigator, "Initializes")
+Rel(app_entry, theme_provider, "Provides")
+Rel(app_entry, i18n_provider, "Configures")
+Rel(app_entry, redux_store, "Creates")
+
+' Navigation hierarchy
+Rel(app_navigator, auth_navigator, "Routes to")
+Rel(app_navigator, main_navigator, "Routes to")
+Rel(app_navigator, modal_navigator, "Shows")
+
+Rel(auth_navigator, welcome_screen, "Shows")
+Rel(auth_navigator, pin_creation_screen, "Shows")
+
+Rel(main_navigator, home_screen, "Tab 1")
+Rel(main_navigator, credentials_list_screen, "Tab 2")
+Rel(main_navigator, connections_list_screen, "Tab 3")
+
+Rel(modal_navigator, qr_scanner_screen, "Shows")
+Rel(modal_navigator, credential_offer_screen, "Shows")
+
+' Screens to components
+Rel(credentials_list_screen, credential_card, "Renders")
+Rel(credential_detail_screen, credential_card, "Renders")
+Rel(connections_list_screen, connection_card, "Renders")
+
+Rel(credentials_list_screen, buttons, "Uses")
+Rel(credentials_list_screen, lists, "Uses")
+Rel(credential_offer_screen, modals, "Uses")
+
+' Screens to hooks
+Rel(credentials_list_screen, use_credentials, "Uses")
+Rel(connections_list_screen, use_connections, "Uses")
+Rel(proof_request_screen, use_proofs, "Uses")
+Rel(qr_scanner_screen, use_qr_scanner, "Uses")
+Rel(pin_creation_screen, use_auth, "Uses")
+
+' Hooks to services
+Rel(use_credentials, credential_service, "Calls")
+Rel(use_connections, connection_service, "Calls")
+Rel(use_proofs, proof_service, "Calls")
+Rel(use_did, did_service, "Calls")
+Rel(use_backup, backup_service, "Calls")
+
+' Hooks to state
+Rel(use_credentials, redux_store, "Dispatches actions")
+Rel(use_connections, redux_store, "Reads state")
+Rel(use_auth, context_providers, "Uses AuthContext")
+
+' Services to SDK
+Rel(credential_service, ssi_sdk, "VC Handler")
+Rel(connection_service, ssi_sdk, "Connection Manager")
+Rel(proof_service, ssi_sdk, "VP Handler")
+Rel(did_service, ssi_sdk, "DID Manager")
+Rel(oid4vci_service, ssi_sdk, "OID4VCI Client")
+Rel(oid4vp_service, ssi_sdk, "OID4VP Client")
+Rel(didcomm_service, ssi_sdk, "DIDComm Engine")
+
+' Theming
+Rel(credential_card, theme_provider, "Uses theme")
+Rel(buttons, theme_provider, "Styled by")
+Rel(color_scheme, theme_provider, "Provides")
+
+' Localization
+Rel(welcome_screen, translation_hooks, "Uses")
+Rel(credentials_list_screen, translation_hooks, "Uses")
+Rel(translation_hooks, i18n_provider, "Accesses")
+Rel(i18n_provider, translation_files, "Loads")
+
+' Native modules
+Rel(qr_scanner_screen, qr_scanner_module, "Uses")
+Rel(use_auth, biometric_module, "Authenticates")
+Rel(use_auth, secure_storage_module, "Stores PIN")
+Rel(notification_module, fcm_apns, "Receives from")
+
+' State persistence
+Rel(redux_store, async_storage, "Persists to")
+
+SHOW_LEGEND()
+
+@enduml

@@ -1,0 +1,93 @@
+@startuml BC Wallet - SSI Core Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram - SSI Core Layer (Credo Framework)
+
+Container_Boundary(credo, "Credo Agent (Aries Framework)") {
+    Component(agent_core, "Agent Core", "TypeScript", "Central agent orchestrator")
+    
+    Component(wallet_module, "Wallet Module", "TypeScript", "Wallet lifecycle management")
+    
+    Component(connections_module, "Connections Module", "Aries Protocol", "DIDComm connection protocol handler")
+    
+    Component(credentials_module, "Credentials Module", "Aries Protocol", "Credential issuance protocol handler")
+    
+    Component(proofs_module, "Proofs Module", "Aries Protocol", "Proof presentation protocol handler")
+    
+    Component(dids_module, "DIDs Module", "DID Operations", "DID creation and resolution")
+    
+    Component(didcomm_module, "DIDComm Module", "Message Protocol", "DIDComm v1/v2 messaging")
+    
+    Component(mediator_module, "Mediator Module", "Routing Protocol", "Message routing via mediator")
+    
+    Component(message_dispatcher, "Message Dispatcher", "Router", "Routes messages to protocol handlers")
+    
+    Component(crypto_service, "Crypto Service", "Cryptography", "Signing, encryption, key management")
+    
+    Component(storage_service, "Storage Service", "Data Access", "Abstract storage layer")
+    
+    Component(ledger_service, "Ledger Service", "Blockchain Client", "Indy ledger operations")
+}
+
+Container_Boundary(native_sdk, "Native SDK Layer") {
+    Component(indy_wallet, "Indy Wallet", "Native", "Secure wallet operations")
+    
+    Component(indy_crypto, "Indy Crypto", "Native", "Ed25519, X25519 operations")
+    
+    Component(indy_ledger, "Indy Ledger Client", "Native", "Ledger read/write")
+    
+    Component(anoncreds, "AnonCreds", "Native", "Anonymous credentials (ZKP)")
+    
+    Component(askar_store, "Askar Store", "Native", "Encrypted key-value storage")
+}
+
+System_Ext(mediator_service, "Mediator Service")
+System_Ext(indy_blockchain, "Indy Ledger")
+
+Rel(agent_core, wallet_module, "Manages")
+Rel(agent_core, connections_module, "Uses")
+Rel(agent_core, credentials_module, "Uses")
+Rel(agent_core, proofs_module, "Uses")
+Rel(agent_core, dids_module, "Uses")
+Rel(agent_core, didcomm_module, "Uses")
+Rel(agent_core, message_dispatcher, "Routes messages")
+
+Rel(connections_module, didcomm_module, "Sends/receives")
+Rel(credentials_module, didcomm_module, "Sends/receives")
+Rel(proofs_module, didcomm_module, "Sends/receives")
+
+Rel(didcomm_module, crypto_service, "Encrypts/signs")
+Rel(didcomm_module, mediator_module, "Routes via")
+
+Rel(mediator_module, mediator_service, "Connects to", "HTTPS/WSS")
+
+Rel(message_dispatcher, connections_module, "Dispatches connection messages")
+Rel(message_dispatcher, credentials_module, "Dispatches credential messages")
+Rel(message_dispatcher, proofs_module, "Dispatches proof messages")
+
+Rel(wallet_module, storage_service, "Stores wallet data")
+Rel(connections_module, storage_service, "Stores connections")
+Rel(credentials_module, storage_service, "Stores credentials")
+Rel(proofs_module, storage_service, "Stores proof records")
+
+Rel(crypto_service, indy_crypto, "Uses", "Native binding")
+Rel(crypto_service, dids_module, "Generates DIDs")
+
+Rel(storage_service, askar_store, "Uses", "Native binding")
+
+Rel(wallet_module, indy_wallet, "Uses", "Native binding")
+
+Rel(credentials_module, anoncreds, "Issues/processes", "Native binding")
+Rel(proofs_module, anoncreds, "Generates/verifies", "Native binding")
+
+Rel(ledger_service, indy_ledger, "Uses", "Native binding")
+Rel(indy_ledger, indy_blockchain, "Queries", "Indy protocol")
+
+Rel(credentials_module, ledger_service, "Fetches schemas/cred defs")
+Rel(proofs_module, ledger_service, "Fetches public keys")
+
+SHOW_LEGEND()
+
+@enduml

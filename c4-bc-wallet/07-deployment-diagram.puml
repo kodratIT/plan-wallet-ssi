@@ -1,0 +1,126 @@
+@startuml BC Wallet - Deployment Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Deployment Diagram for BC Wallet Mobile System
+
+Deployment_Node(android_device, "Android Device", "Mobile Device") {
+    Deployment_Node(android_os, "Android OS", "Android 6.0+") {
+        Container(android_app, "BC Wallet APK", "Kotlin, Jetpack Compose", "Native Android implementation")
+        
+        ContainerDb(android_storage, "Encrypted Storage", "SQLite + Keystore", "Local credential storage")
+    }
+}
+
+Deployment_Node(ios_device, "iOS Device", "Mobile Device") {
+    Deployment_Node(ios_os, "iOS", "iOS 13.0+") {
+        Container(ios_app, "BC Wallet IPA", "Swift, SwiftUI", "Native iOS implementation")
+        
+        ContainerDb(ios_storage, "Encrypted Storage", "Core Data + Keychain", "Local credential storage")
+    }
+}
+
+Deployment_Node(mediator_infra, "Mediator Infrastructure", "Cloud Platform (AWS/Azure/GCP)") {
+    Deployment_Node(mediator_cluster, "Kubernetes Cluster", "Container Orchestration") {
+        Container(mediator_service, "Mediator Service", "Node.js/Python", "DIDComm message routing")
+        
+        ContainerDb(message_queue, "Message Queue", "Redis/RabbitMQ", "Message buffering")
+        
+        ContainerDb(message_storage, "Message Store", "PostgreSQL", "Persistent message storage")
+    }
+    
+    Deployment_Node(load_balancer, "Load Balancer", "HTTPS/WSS") {
+        Container(lb, "Load Balancer", "Nginx/AWS ALB", "Traffic distribution")
+    }
+}
+
+Deployment_Node(indy_network, "Hyperledger Indy Network", "Blockchain Infrastructure") {
+    Deployment_Node(validator_nodes, "Validator Nodes", "4+ Nodes") {
+        Container(validator1, "Indy Node 1", "Ubuntu, Indy Node", "Validator node")
+        Container(validator2, "Indy Node 2", "Ubuntu, Indy Node", "Validator node")
+        Container(validator3, "Indy Node 3", "Ubuntu, Indy Node", "Validator node")
+        Container(validator4, "Indy Node 4", "Ubuntu, Indy Node", "Validator node")
+    }
+    
+    ContainerDb(ledger, "Distributed Ledger", "Blockchain", "Immutable ledger")
+}
+
+Deployment_Node(bcgov_infra, "BC Government Infrastructure", "On-Premise/Private Cloud") {
+    Deployment_Node(bcsc_cluster, "BCSC Cluster", "High Availability") {
+        Container(bcsc_oauth, "OAuth2 Server", "Spring Boot/Java", "Authentication service")
+        
+        Container(bcsc_profile, "Profile API", "REST API", "User profile service")
+        
+        ContainerDb(bcsc_db, "User Database", "PostgreSQL", "User identity data")
+    }
+    
+    Deployment_Node(ias_cluster, "IAS Cluster", "High Availability") {
+        Container(ias_api, "IAS Core API", "REST API", "Verification service")
+        
+        Container(ias_issuer, "Credential Issuer", "Aries Agent", "Issues verified credentials")
+        
+        ContainerDb(ias_db, "IAS Database", "PostgreSQL", "Verification records")
+    }
+}
+
+Deployment_Node(push_infra, "Push Notification Services", "Google/Apple Cloud") {
+    Container(fcm, "Firebase Cloud Messaging", "Google Services", "Android push notifications")
+    
+    Container(apns, "Apple Push Notification Service", "Apple Services", "iOS push notifications")
+}
+
+Deployment_Node(app_distribution, "App Distribution", "App Stores") {
+    Container(play_store, "Google Play Store", "App Distribution", "Android app delivery")
+    
+    Container(app_store, "Apple App Store", "App Distribution", "iOS app delivery")
+}
+
+' Relationships
+Rel(android_app, android_storage, "Reads/Writes", "Local API")
+Rel(ios_app, ios_storage, "Reads/Writes", "Local API")
+
+Rel(android_app, lb, "Sends/Receives Messages", "HTTPS/WSS")
+Rel(ios_app, lb, "Sends/Receives Messages", "HTTPS/WSS")
+
+Rel(lb, mediator_service, "Routes traffic")
+Rel(mediator_service, message_queue, "Queues messages")
+Rel(mediator_service, message_storage, "Stores messages")
+
+Rel(mediator_service, fcm, "Triggers notifications", "Firebase API")
+Rel(mediator_service, apns, "Triggers notifications", "APNs API")
+
+Rel(fcm, android_app, "Delivers notifications", "Push protocol")
+Rel(apns, ios_app, "Delivers notifications", "Push protocol")
+
+Rel(android_app, validator1, "Queries ledger", "Indy protocol, HTTPS")
+Rel(ios_app, validator1, "Queries ledger", "Indy protocol, HTTPS")
+
+Rel(validator1, ledger, "Consensus")
+Rel(validator2, ledger, "Consensus")
+Rel(validator3, ledger, "Consensus")
+Rel(validator4, ledger, "Consensus")
+
+Rel(android_app, bcsc_oauth, "Authenticates", "OAuth2/OIDC, HTTPS")
+Rel(ios_app, bcsc_oauth, "Authenticates", "OAuth2/OIDC, HTTPS")
+
+Rel(bcsc_oauth, bcsc_db, "Queries")
+Rel(bcsc_profile, bcsc_db, "Queries")
+
+Rel(android_app, bcsc_profile, "Fetches profile", "REST API, HTTPS")
+Rel(ios_app, bcsc_profile, "Fetches profile", "REST API, HTTPS")
+
+Rel(android_app, ias_api, "Requests verification", "REST API, HTTPS")
+Rel(ios_app, ias_api, "Requests verification", "REST API, HTTPS")
+
+Rel(ias_api, ias_db, "Stores verification")
+Rel(ias_issuer, ias_db, "Queries verification")
+
+Rel(ias_issuer, mediator_service, "Sends credentials", "DIDComm")
+
+Rel(play_store, android_app, "Updates", "Auto-update")
+Rel(app_store, ios_app, "Updates", "Auto-update")
+
+SHOW_LEGEND()
+
+@enduml

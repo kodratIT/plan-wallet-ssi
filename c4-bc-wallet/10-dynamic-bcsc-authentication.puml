@@ -1,0 +1,74 @@
+@startuml BC Wallet - Dynamic BCSC Authentication
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Dynamic.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Dynamic Diagram - BC Services Card Authentication & Credential Issuance
+
+Person(user, "User", "BC resident")
+Container(mobile_app, "Mobile App", "React Native", "BC Wallet")
+Container(bcsc_service, "BCSC Service", "OAuth Client", "Authentication handler")
+Container(secure_storage, "Secure Storage", "Keychain", "Token storage")
+System_Ext(bcsc_auth, "BCSC Auth Server", "OAuth2/OIDC")
+System_Ext(bcsc_profile, "BCSC Profile API", "REST API")
+System_Ext(ias_api, "IAS Core API", "REST API")
+System_Ext(ias_issuer, "IAS Issuer", "Aries Agent")
+Container(credo_agent, "Credo Agent", "AFJ", "Credential handler")
+
+' OAuth2/OIDC Authentication Phase
+Rel(user, mobile_app, "1. Click 'Login with BCSC'")
+Rel(mobile_app, bcsc_service, "2. Initiate OAuth flow")
+Rel(bcsc_service, bcsc_service, "3. Generate PKCE code_verifier and challenge")
+
+Rel(bcsc_service, bcsc_auth, "4. Authorization request with code_challenge, client_id, redirect_uri, scope (openid profile email address), state", "HTTPS")
+
+Rel(bcsc_auth, user, "5. Display BCSC login page in system browser")
+Rel(user, bcsc_auth, "6. Enter BC Services Card credentials")
+Rel(bcsc_auth, bcsc_auth, "7. Authenticate user")
+
+Rel(bcsc_auth, mobile_app, "8. Redirect with auth code", "Deep link")
+
+' Token Exchange Phase
+Rel(mobile_app, bcsc_service, "9. Handle redirect")
+Rel(bcsc_service, bcsc_auth, "10. Token request with code_verifier, auth_code, grant_type=authorization_code", "HTTPS")
+
+Rel(bcsc_auth, bcsc_auth, "11. Verify PKCE challenge")
+Rel(bcsc_auth, bcsc_service, "12. Return tokens: access_token, refresh_token, id_token")
+
+Rel(bcsc_service, bcsc_service, "13. Validate ID token (verify signature)")
+Rel(bcsc_service, secure_storage, "14. Store tokens securely")
+
+' User Profile Retrieval Phase
+Rel(bcsc_service, bcsc_profile, "15. Get user profile with Bearer token", "HTTPS")
+
+Rel(bcsc_profile, bcsc_service, "16. Return user profile: sub, given_name, family_name, birthdate, email, address, identity_assurance_level")
+
+Rel(bcsc_service, mobile_app, "17. Profile data ready")
+Rel(mobile_app, user, "18. Display profile")
+
+' Identity Verification & Credential Issuance Phase
+Rel(user, mobile_app, "19. Request Verified Person Credential")
+Rel(mobile_app, ias_api, "20. Initiate verification with BCSC token, verification_type=bcsc_authenticated", "HTTPS")
+
+Rel(ias_api, ias_api, "21. Verify BCSC token and check identity assurance level")
+
+Rel(ias_api, mobile_app, "22. Verification approved: session_id, status=verified, credential_offer=true")
+
+Rel(ias_api, ias_issuer, "23. Trigger credential issuance")
+Rel(ias_issuer, credo_agent, "24. Send Verified Person Credential offer with attributes: Full Name, Date of Birth, Address, Email, IAL:3", "DIDComm")
+
+Rel(credo_agent, mobile_app, "25. Credential offer received")
+Rel(mobile_app, user, "26. Display credential offer")
+Rel(user, mobile_app, "27. Accept offer")
+
+Rel(mobile_app, credo_agent, "28. Accept credential")
+Rel(credo_agent, ias_issuer, "29. Send credential request", "DIDComm")
+Rel(ias_issuer, credo_agent, "30. Issue credential", "DIDComm")
+Rel(credo_agent, credo_agent, "31. Store credential encrypted")
+
+Rel(credo_agent, mobile_app, "32. Credential stored")
+Rel(mobile_app, user, "33. Show success")
+
+SHOW_LEGEND()
+
+@enduml

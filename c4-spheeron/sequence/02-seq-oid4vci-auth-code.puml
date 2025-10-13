@@ -1,0 +1,762 @@
+@startuml 02-seq-oid4vci-auth-code
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title OpenID4VCI Authorization Code Flow with PKCE\n**Credential Issuance with Full OAuth2 Authorization**
+
+actor "User\n(Holder)" as User
+participant "Mobile\nWallet UI" as WalletUI
+participant "QR Scanner" as QRScanner
+participant "OID4VCI\nClient" as OID4VCI
+participant "PKCE\nGenerator" as PKCE
+participant "Browser\n(System)" as Browser
+participant "Issuer\nAuth Page" as IssuerAuth
+participant "Key\nManager" as KeyMgr
+participant "DID\nManager" as DIDMgr
+participant "DID\nResolver" as DIDResolver
+participant "Credential\nStore" as CredStore
+participant "Issuer\nAuthorization\nServer" as IssuerAS
+participant "Issuer\nCredential\nEndpoint" as IssuerCred
+
+== 1. QR Scan & Parse Credential Offer ==
+
+User -> WalletUI: Scan QR code
+activate WalletUI
+WalletUI -> QRScanner: startScanning()
+activate QRScanner
+QRScanner -> QRScanner: Detect QR code
+QRScanner --> WalletUI: QR URL detected
+deactivate QRScanner
+
+note right of QRScanner
+  **QR URL Format:**
+  openid-credential-offer://?
+  credential_offer_uri=https://issuer.com/offers/xyz789
+  
+  This offer requires full authorization
+  (no pre-authorized code)
+end note
+
+WalletUI -> OID4VCI: parseCredentialOffer(url)
+activate OID4VCI
+
+OID4VCI -> IssuerAS: GET /offers/xyz789
+activate IssuerAS
+IssuerAS --> OID4VCI: credential_offer JSON
+deactivate IssuerAS
+
+OID4VCI -> OID4VCI: Parse JSON
+note right of OID4VCI
+  **Credential Offer Structure:**
+  {
+    "credential_issuer": "https://issuer.com",
+    "credentials": ["EmployeeIDCredential"],
+    "grants": {
+      "authorization_code": {
+        "issuer_state": "state_xyz789"
+      }
+    }
+  }
+  
+  Note: No pre-authorized_code
+  → Requires full OAuth2 flow
+end note
+
+OID4VCI -> OID4VCI: Extract:\n- issuer URL\n- credential types\n- issuer_state\n- Authorization required
+
+== 2. Issuer Discovery & Metadata ==
+
+OID4VCI -> IssuerAS: GET /.well-known/openid-credential-issuer
+activate IssuerAS
+IssuerAS --> OID4VCI: Issuer metadata JSON
+deactivate IssuerAS
+
+note right of IssuerAS
+  **Issuer Metadata:**
+  {
+    "credential_issuer": "https://issuer.com",
+    "authorization_server": "https://issuer.com/oauth",
+    "credential_endpoint": "https://issuer.com/credential",
+    "credentials_supported": [{
+      "format": "jwt_vc_json",
+      "types": ["VerifiableCredential", "EmployeeIDCredential"],
+      "cryptographic_binding_methods_supported": ["did"],
+      "credential_signing_alg_values_supported": ["ES256K"]
+    }],
+    "display": [{
+      "name": "Acme Corporation",
+      "locale": "en-US",
+      "logo": {"url": "https://issuer.com/logo.png"}
+    }]
+  }
+end note
+
+OID4VCI -> IssuerAS: GET /.well-known/oauth-authorization-server
+activate IssuerAS
+IssuerAS --> OID4VCI: OAuth server metadata
+deactivate IssuerAS
+
+note right of IssuerAS
+  **OAuth Server Metadata:**
+  {
+    "issuer": "https://issuer.com/oauth",
+    "authorization_endpoint": "https://issuer.com/oauth/authorize",
+    "token_endpoint": "https://issuer.com/oauth/token",
+    "response_types_supported": ["code"],
+    "grant_types_supported": ["authorization_code"],
+    "code_challenge_methods_supported": ["S256"],
+    "scopes_supported": ["openid"]
+  }
+end note
+
+OID4VCI -> OID4VCI: Validate metadata
+OID4VCI -> OID4VCI: Extract authorization endpoint
+OID4VCI -> OID4VCI: Extract token endpoint
+OID4VCI -> OID4VCI: Confirm PKCE supported (S256)
+
+OID4VCI --> WalletUI: Issuer info + credential preview
+deactivate OID4VCI
+
+== 3. User Review & Accept ==
+
+WalletUI -> WalletUI: Display credential offer
+WalletUI -> User: Show:\n- Issuer name & logo\n- Credential type\n- Required authorization\n- Privacy notice
+activate User
+
+note right of WalletUI
+  **Display to User:**
+  
+  Acme Corporation wants to issue you:
+  → Employee ID Credential
+  
+  This requires you to:
+  • Log in to Acme Corporation
+  • Authorize credential issuance
+  
+  Your credentials will be stored securely
+  in your wallet.
+  
+  [Decline] [Accept & Authorize]
+end note
+
+User -> WalletUI: Accept & Authorize
+deactivate User
+
+== 4. Generate PKCE Parameters ==
+
+WalletUI -> OID4VCI: startAuthorizationFlow()
+activate OID4VCI
+
+OID4VCI -> PKCE: generatePKCE()
+activate PKCE
+
+PKCE -> PKCE: Generate code_verifier\n(43-128 chars, random)
+note right of PKCE
+  **Code Verifier:**
+  Random string: a-z, A-Z, 0-9, -, ., _, ~
+  Length: 43-128 characters
+  
+  Example:
+  "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+end note
+
+PKCE -> PKCE: Generate code_challenge\n= BASE64URL(SHA256(code_verifier))
+note right of PKCE
+  **Code Challenge:**
+  SHA-256 hash of code_verifier
+  Base64URL encoded (no padding)
+  
+  code_challenge = 
+    BASE64URL(SHA256(code_verifier))
+  
+  Challenge method: S256
+end note
+
+PKCE --> OID4VCI: code_verifier,\ncode_challenge,\ncode_challenge_method
+deactivate PKCE
+
+OID4VCI -> OID4VCI: Store code_verifier securely\n(needed for token exchange)
+
+== 5. Build Authorization Request ==
+
+OID4VCI -> OID4VCI: Generate state (random)
+OID4VCI -> OID4VCI: Generate redirect_uri\n(app custom scheme)
+
+OID4VCI -> OID4VCI: Build authorization URL
+note right of OID4VCI
+  **Authorization URL:**
+  https://issuer.com/oauth/authorize?
+    response_type=code
+    &client_id=wallet_client_id
+    &redirect_uri=myapp://callback
+    &state=state_abc123
+    &code_challenge=<challenge>
+    &code_challenge_method=S256
+    &issuer_state=state_xyz789
+    &scope=openid
+  
+  Key parameters:
+  • code_challenge: PKCE challenge
+  • issuer_state: from credential offer
+  • state: CSRF protection
+end note
+
+OID4VCI --> WalletUI: authorization_url
+deactivate OID4VCI
+
+== 6. Browser Authorization Flow ==
+
+WalletUI -> Browser: Open authorization_url
+activate Browser
+
+Browser -> IssuerAuth: GET /oauth/authorize?...
+activate IssuerAuth
+
+IssuerAuth -> IssuerAuth: Validate request:\n- client_id\n- redirect_uri\n- state\n- code_challenge
+
+IssuerAuth -> User: Display login page
+activate User
+
+note right of IssuerAuth
+  **Login Page:**
+  
+  [Acme Corporation Logo]
+  
+  Sign in to authorize
+  Employee ID Credential
+  
+  Username: [________]
+  Password: [________]
+  
+  [Sign In]
+  
+  By continuing, you authorize Acme
+  to issue credentials to your wallet.
+end note
+
+User -> IssuerAuth: Enter credentials\n(username, password)
+IssuerAuth -> IssuerAuth: Authenticate user
+IssuerAuth -> IssuerAuth: Validate credentials
+
+alt Authentication successful
+  IssuerAuth -> User: Display consent screen
+  
+  note right of IssuerAuth
+    **Consent Screen:**
+    
+    Your Wallet wants to:
+    • Receive Employee ID Credential
+    • Access your employee information
+    
+    This credential will include:
+    • Full name
+    • Employee ID
+    • Department
+    • Start date
+    
+    [Deny] [Allow]
+  end note
+  
+  User -> IssuerAuth: Click Allow
+  deactivate User
+  
+  IssuerAuth -> IssuerAuth: Create authorization code
+  IssuerAuth -> IssuerAuth: Bind code to:\n- code_challenge\n- client_id\n- redirect_uri
+  IssuerAuth -> IssuerAuth: Store user consent
+  
+  IssuerAuth -> Browser: Redirect to:\nmyapp://callback?code=<code>&state=<state>
+  deactivate IssuerAuth
+  
+  Browser -> WalletUI: Deep link callback\n(code + state)
+  deactivate Browser
+
+else Authentication failed
+  IssuerAuth -> User: Show error:\nInvalid credentials
+  User -> IssuerAuth: Retry or cancel
+end
+
+== 7. Handle Authorization Response ==
+
+WalletUI -> OID4VCI: handleAuthorizationResponse(code, state)
+activate OID4VCI
+
+OID4VCI -> OID4VCI: Validate state\n(CSRF protection)
+note right of OID4VCI
+  **State Validation:**
+  Compare received state with stored state
+  If mismatch → CSRF attack, abort
+end note
+
+alt State valid
+  OID4VCI -> OID4VCI: Extract authorization code
+  OID4VCI -> OID4VCI: Retrieve stored code_verifier
+else State invalid
+  OID4VCI -> WalletUI: Error: Invalid state
+  OID4VCI --> User: Authorization failed
+  deactivate OID4VCI
+  [<-- OID4VCI
+end
+
+== 8. Token Exchange with PKCE ==
+
+OID4VCI -> IssuerAS: POST /oauth/token
+activate IssuerAS
+
+note right of OID4VCI
+  **Token Request Body:**
+  {
+    "grant_type": "authorization_code",
+    "code": "<authorization_code>",
+    "code_verifier": "<code_verifier>",
+    "client_id": "wallet_client_id",
+    "redirect_uri": "myapp://callback"
+  }
+  
+  PKCE Verification:
+  Server will compute:
+    SHA256(code_verifier) == stored code_challenge
+end note
+
+IssuerAS -> IssuerAS: Validate authorization code
+IssuerAS -> IssuerAS: Retrieve stored:\n- code_challenge\n- user consent\n- credential offer
+
+IssuerAS -> IssuerAS: Verify PKCE:\nSHA256(code_verifier) == code_challenge
+
+note right of IssuerAS
+  **PKCE Verification:**
+  1. Compute: SHA256(received code_verifier)
+  2. Compare with stored code_challenge
+  3. If match → valid, continue
+  4. If mismatch → reject (possible attack)
+  
+  This proves the token request comes from
+  the same client that initiated auth flow.
+end note
+
+alt PKCE valid
+  IssuerAS -> IssuerAS: Generate access_token
+  IssuerAS -> IssuerAS: Optional: generate c_nonce\n(for key proof)
+  
+  IssuerAS --> OID4VCI: Token response
+  deactivate IssuerAS
+  
+  note right of IssuerAS
+    **Token Response:**
+    {
+      "access_token": "eyJhbGc...",
+      "token_type": "Bearer",
+      "expires_in": 3600,
+      "c_nonce": "nonce_xyz",
+      "c_nonce_expires_in": 86400
+    }
+  end note
+
+else PKCE invalid
+  IssuerAS --> OID4VCI: Error:\nInvalid code_verifier
+  OID4VCI --> WalletUI: Token exchange failed
+  deactivate IssuerAS
+  deactivate OID4VCI
+  [<-- OID4VCI
+end
+
+OID4VCI -> OID4VCI: Store access_token
+OID4VCI -> OID4VCI: Store c_nonce (if provided)
+
+== 9. Select/Create DID for Credential ==
+
+OID4VCI -> DIDMgr: getAvailableDIDs()
+activate DIDMgr
+DIDMgr --> OID4VCI: List of DIDs
+deactivate DIDMgr
+
+OID4VCI -> WalletUI: Display DID selection
+WalletUI -> User: Select DID for credential\n(or create new)
+activate User
+
+note right of WalletUI
+  **DID Selection:**
+  
+  Which identity should receive
+  this credential?
+  
+  ○ did:key:z6Mkf... (Primary)
+  ○ did:web:example.com
+  ○ Create new DID
+  
+  [Continue]
+end note
+
+User -> WalletUI: Select DID
+deactivate User
+WalletUI --> OID4VCI: selected_did
+OID4VCI -> OID4VCI: Set holder_did
+
+== 10. Generate Proof of Possession (Key Binding) ==
+
+OID4VCI -> DIDMgr: resolveDID(holder_did)
+activate DIDMgr
+DIDMgr -> DIDResolver: resolve(holder_did)
+activate DIDResolver
+DIDResolver --> DIDMgr: DID document
+deactivate DIDResolver
+DIDMgr --> OID4VCI: DID document
+deactivate DIDMgr
+
+OID4VCI -> OID4VCI: Extract verification method\n(public key)
+
+OID4VCI -> KeyMgr: Get private key for DID
+activate KeyMgr
+KeyMgr -> KeyMgr: Retrieve from secure storage
+KeyMgr --> OID4VCI: private_key
+deactivate KeyMgr
+
+OID4VCI -> OID4VCI: Build proof JWT header
+note right of OID4VCI
+  **Proof JWT Header:**
+  {
+    "alg": "ES256K",
+    "typ": "openid4vci-proof+jwt",
+    "kid": "did:key:z6Mkf...#z6Mkf..."
+  }
+end note
+
+OID4VCI -> OID4VCI: Build proof JWT payload
+note right of OID4VCI
+  **Proof JWT Payload:**
+  {
+    "iss": "did:key:z6Mkf...",
+    "aud": "https://issuer.com",
+    "iat": 1640000000,
+    "nonce": "nonce_xyz"
+  }
+  
+  • iss: holder DID (client identifier)
+  • aud: credential issuer URL
+  • nonce: from token response (c_nonce)
+end note
+
+OID4VCI -> KeyMgr: Sign JWT with private key
+activate KeyMgr
+KeyMgr -> KeyMgr: Generate signature
+KeyMgr --> OID4VCI: signature
+deactivate KeyMgr
+
+OID4VCI -> OID4VCI: Assemble JWT:\nheader.payload.signature
+
+OID4VCI -> OID4VCI: Validate proof structure
+
+note right of OID4VCI
+  **Proof of Possession (PoP):**
+  
+  This JWT proves the wallet controls
+  the private key for the holder DID.
+  
+  Issuer will verify:
+  1. Signature is valid
+  2. Public key matches DID
+  3. Nonce is correct (prevents replay)
+  4. Audience is correct
+  
+  Result: Credential will be bound to
+  this DID (holder binding).
+end note
+
+== 11. Request Credential from Issuer ==
+
+OID4VCI -> IssuerCred: POST /credential
+activate IssuerCred
+
+note right of OID4VCI
+  **Credential Request:**
+  
+  POST /credential
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+  
+  {
+    "format": "jwt_vc_json",
+    "types": [
+      "VerifiableCredential",
+      "EmployeeIDCredential"
+    ],
+    "proof": {
+      "proof_type": "jwt",
+      "jwt": "<proof_jwt>"
+    }
+  }
+end note
+
+IssuerCred -> IssuerCred: Validate access_token
+IssuerCred -> IssuerCred: Verify token not expired
+IssuerCred -> IssuerCred: Extract user info from token
+
+IssuerCred -> IssuerCred: Parse proof JWT
+IssuerCred -> IssuerCred: Extract holder DID (iss)
+IssuerCred -> IssuerCred: Resolve holder DID
+IssuerCred -> IssuerCred: Extract public key
+IssuerCred -> IssuerCred: Verify JWT signature
+IssuerCred -> IssuerCred: Verify nonce matches
+IssuerCred -> IssuerCred: Verify audience matches
+
+note right of IssuerCred
+  **Proof Verification:**
+  
+  1. Resolve holder DID
+  2. Get public key from DID document
+  3. Verify JWT signature with public key
+  4. Check nonce (from c_nonce)
+  5. Check audience (issuer URL)
+  
+  If valid → holder controls the DID
+end note
+
+alt Proof valid
+  IssuerCred -> IssuerCred: Fetch user data\n(employee info)
+  
+  note right of IssuerCred
+    **User Data:**
+    From HR database / identity provider
+    - Full name: "Alice Johnson"
+    - Employee ID: "EMP-12345"
+    - Department: "Engineering"
+    - Start date: "2020-01-15"
+    - Email: "alice@acme.com"
+  end note
+  
+  IssuerCred -> IssuerCred: Build credential
+  
+  note right of IssuerCred
+    **Verifiable Credential:**
+    {
+      "@context": [...],
+      "type": ["VerifiableCredential", "EmployeeIDCredential"],
+      "issuer": "did:web:issuer.com",
+      "issuanceDate": "2024-01-15T10:00:00Z",
+      "expirationDate": "2025-01-15T10:00:00Z",
+      "credentialSubject": {
+        "id": "did:key:z6Mkf...",
+        "name": "Alice Johnson",
+        "employeeId": "EMP-12345",
+        "department": "Engineering",
+        "startDate": "2020-01-15",
+        "email": "alice@acme.com"
+      }
+    }
+  end note
+  
+  IssuerCred -> IssuerCred: Get issuer DID & key
+  IssuerCred -> IssuerCred: Sign credential (JWT format)
+  
+  note right of IssuerCred
+    **Credential JWT:**
+    
+    Header:
+    {
+      "alg": "ES256K",
+      "typ": "JWT",
+      "kid": "did:web:issuer.com#key-1"
+    }
+    
+    Payload: <credential_json>
+    
+    Signature: <issuer_signature>
+  end note
+  
+  IssuerCred --> OID4VCI: Credential response
+  deactivate IssuerCred
+  
+  note right of IssuerCred
+    **Credential Response:**
+    {
+      "format": "jwt_vc_json",
+      "credential": "<jwt_credential>",
+      "c_nonce": "new_nonce_123",
+      "c_nonce_expires_in": 86400
+    }
+  end note
+
+else Proof invalid
+  IssuerCred --> OID4VCI: Error:\nInvalid proof
+  deactivate IssuerCred
+  OID4VCI --> WalletUI: Credential request failed
+  deactivate OID4VCI
+  [<-- OID4VCI
+end
+
+OID4VCI -> OID4VCI: Parse credential response
+OID4VCI -> OID4VCI: Extract credential JWT
+
+== 12. Validate Received Credential ==
+
+OID4VCI -> OID4VCI: Decode JWT credential
+OID4VCI -> OID4VCI: Parse credential JSON
+
+OID4VCI -> OID4VCI: Extract issuer DID\n(from issuer field)
+
+OID4VCI -> DIDResolver: Resolve issuer DID
+activate DIDResolver
+DIDResolver -> DIDResolver: Fetch DID document
+DIDResolver --> OID4VCI: Issuer DID document
+deactivate DIDResolver
+
+note right of DIDResolver
+  **Resolve Issuer DID:**
+  
+  Example: did:web:issuer.com
+  
+  Fetch from:
+  https://issuer.com/.well-known/did.json
+  
+  Get issuer's public key for verification
+end note
+
+OID4VCI -> OID4VCI: Extract issuer public key\nfrom DID document
+
+OID4VCI -> OID4VCI: Verify credential JWT signature\nwith issuer public key
+
+alt Signature valid
+  OID4VCI -> OID4VCI: ✓ Signature verified
+else Signature invalid
+  OID4VCI -> WalletUI: Error: Invalid signature
+  deactivate OID4VCI
+  [<-- OID4VCI
+end
+
+OID4VCI -> OID4VCI: Validate credential structure:\n- @context present\n- type includes VC\n- issuer present\n- credentialSubject present
+
+OID4VCI -> OID4VCI: Validate dates:\n- issuanceDate <= now\n- expirationDate > now
+
+OID4VCI -> OID4VCI: Validate subject DID\nmatches holder DID
+
+note right of OID4VCI
+  **Credential Validation Checks:**
+  
+  ✓ 1. Signature verification (issuer)
+  ✓ 2. Structure validation (W3C VC)
+  ✓ 3. Date validation (not expired)
+  ✓ 4. Subject DID matches holder
+  ✓ 5. Issuer DID resolvable
+  ✓ 6. No tampered fields
+  
+  All checks passed → credential valid
+end note
+
+OID4VCI -> OID4VCI: Check revocation status\n(if credential has status info)
+
+note right of OID4VCI
+  **Revocation Check (Optional):**
+  
+  If credential includes:
+  "credentialStatus": {
+    "type": "StatusList2021Entry",
+    "statusListCredential": "https://...",
+    "statusListIndex": "123"
+  }
+  
+  Then check if revoked.
+  For initial issuance, should be valid.
+end note
+
+alt Credential valid
+  OID4VCI -> OID4VCI: ✓ Credential validated
+else Credential invalid
+  OID4VCI -> WalletUI: Error: Validation failed
+  deactivate OID4VCI
+  [<-- OID4VCI
+end
+
+== 13. Store Credential ==
+
+OID4VCI -> CredStore: storeCredential(credential, metadata)
+activate CredStore
+
+CredStore -> CredStore: Generate credential ID (UUID)
+CredStore -> CredStore: Extract metadata:\n- type\n- issuer\n- issued date\n- expiration date
+
+CredStore -> CredStore: Store credential in database\n(encrypted)
+
+note right of CredStore
+  **Credential Storage:**
+  
+  Table: credentials
+  - id: uuid
+  - raw_credential: <encrypted_jwt>
+  - type: "EmployeeIDCredential"
+  - issuer: "did:web:issuer.com"
+  - subject: "did:key:z6Mkf..."
+  - issued_at: timestamp
+  - expires_at: timestamp
+  - status: "valid"
+  - metadata: json
+end note
+
+CredStore -> CredStore: Create search indexes
+CredStore --> OID4VCI: credential_id
+deactivate CredStore
+
+OID4VCI -> OID4VCI: Fetch issuer branding\n(OCA bundle)
+
+note right of OID4VCI
+  **OCA Branding (Optional):**
+  
+  Fetch from issuer's OCA bundle
+  to display credential with:
+  • Logo
+  • Colors
+  • Field labels
+  • Background image
+end note
+
+OID4VCI --> WalletUI: Credential stored successfully
+deactivate OID4VCI
+
+== 14. Display Success ==
+
+WalletUI -> WalletUI: Update credential list
+WalletUI -> WalletUI: Apply branding/styling
+
+WalletUI -> User: Show success message
+activate User
+
+note right of WalletUI
+  **Success Screen:**
+  
+  ✓ Credential Received!
+  
+  [Acme Corporation Logo]
+  Employee ID Credential
+  
+  Name: Alice Johnson
+  Employee ID: EMP-12345
+  Department: Engineering
+  
+  Issued by: Acme Corporation
+  Expires: Jan 15, 2025
+  
+  [View Details] [Done]
+end note
+
+User -> WalletUI: Done
+deactivate User
+deactivate WalletUI
+
+note over User, IssuerCred
+  **Flow Complete**
+  
+  Summary:
+  • User authenticated with issuer (OAuth2)
+  • PKCE prevented authorization code interception
+  • Proof of possession binds credential to holder DID
+  • Credential securely stored in wallet
+  • User can now present credential to verifiers
+  
+  Security highlights:
+  • PKCE protects against authorization code interception
+  • State parameter prevents CSRF attacks
+  • Proof JWT proves DID ownership
+  • Credential signature ensures authenticity
+  • End-to-end secure flow
+end note
+
+@enduml

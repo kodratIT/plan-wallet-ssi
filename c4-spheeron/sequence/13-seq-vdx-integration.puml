@@ -1,0 +1,696 @@
+@startuml 13-seq-vdx-integration
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Sphereon VDX Platform - B2B Credential Exchange\n**GDPR-Compliant Verifiable Data Exchange**
+
+actor "Employee\n(Data Subject)" as Employee
+participant "Mobile\nWallet" as Wallet
+participant "Company A\n(Data Controller)" as CompanyA
+participant "Sphereon VDX\nPlatform" as VDX
+participant "VDX API\nGateway" as VDXApi
+participant "Credential\nExchange\nService" as ExchangeSvc
+participant "Consent\nRegistry" as ConsentRegistry
+participant "Audit\nLogger" as AuditLog
+participant "Notification\nService" as Notifier
+participant "Company B\n(Data Processor)" as CompanyB
+
+box "Sphereon VDX Platform" #LightBlue
+  participant VDXApi
+  participant ExchangeSvc
+  participant ConsentRegistry
+  participant AuditLog
+  participant Notifier
+end box
+
+== 1. B2B Data Sharing Agreement Setup ==
+
+CompanyB -> CompanyA: Request employee credentials
+activate CompanyA
+
+note right of CompanyB
+  **Business Scenario:**
+  
+  Company B (background check provider)
+  needs to verify employee credentials
+  from Company A (employer)
+  
+  Use case: Pre-employment verification
+  for contract work
+end note
+
+CompanyA -> CompanyA: Review B2B request
+
+note right of CompanyA
+  **Data Sharing Request:**
+  
+  From: Company B (VerifyPro Inc.)
+  Purpose: Pre-employment verification
+  Legal Basis: Contract (GDPR Art. 6.1.b)
+  
+  Requested data:
+  • Employee name
+  • Job title
+  • Employment dates
+  • Verification status
+  
+  Data retention: 7 years (legal requirement)
+end note
+
+CompanyA -> VDXApi: POST /v1/exchange/agreements
+activate VDXApi
+
+note right of CompanyA
+  **Create Exchange Agreement:**
+  
+  POST https://vdx.sphereon.com/v1/exchange/agreements
+  
+  {
+    "requester": {
+      "id": "did:web:verifypr.com",
+      "name": "VerifyPro Inc.",
+      "purpose": "Pre-employment verification"
+    },
+    "provider": {
+      "id": "did:web:acme.com",
+      "name": "Acme Corporation"
+    },
+    "dataSpec": {
+      "credentialType": "EmployeeIDCredential",
+      "requiredClaims": [
+        "displayName",
+        "jobTitle", 
+        "startDate",
+        "endDate"
+      ],
+      "optionalClaims": ["department"]
+    },
+    "legalBasis": "contract",
+    "purpose": "Employment verification for contract work",
+    "retention": {
+      "period": "P7Y",
+      "reason": "Legal requirement for background checks"
+    },
+    "subjectConsent": "required"
+  }
+end note
+
+VDXApi -> VDXApi: Validate agreement structure
+VDXApi -> VDXApi: Verify company DIDs
+VDXApi -> VDXApi: Check GDPR compliance
+
+VDXApi -> ExchangeSvc: createExchangeAgreement()
+activate ExchangeSvc
+
+ExchangeSvc -> ExchangeSvc: Generate agreement ID
+ExchangeSvc -> ExchangeSvc: Store agreement template
+
+note right of ExchangeSvc
+  **Agreement Created:**
+  
+  Agreement ID: agr_xyz789
+  Status: Pending employee consent
+  
+  GDPR Requirements:
+  ✓ Purpose specified
+  ✓ Legal basis identified
+  ✓ Retention period defined
+  ✓ Subject consent required
+end note
+
+ExchangeSvc --> VDXApi: Agreement created
+deactivate ExchangeSvc
+
+VDXApi --> CompanyA: Agreement ID: agr_xyz789
+deactivate VDXApi
+deactivate CompanyA
+
+== 2. Employee Consent Request ==
+
+CompanyA -> Wallet: Send consent request\n(push notification)
+activate Wallet
+
+note right of CompanyA
+  **Notification Payload:**
+  
+  {
+    "type": "consent-request",
+    "agreementId": "agr_xyz789",
+    "from": "Acme Corporation",
+    "deepLink": "sphereon://consent/agr_xyz789"
+  }
+end note
+
+Wallet -> Employee: Push notification received
+activate Employee
+
+note right of Wallet
+  **Push Notification:**
+  
+  🔔 Consent Request
+  
+  Acme Corporation requests permission
+  to share your employment credential
+  
+  [Review Request]
+end note
+
+Employee -> Wallet: Open notification
+Wallet -> Wallet: Open consent request
+
+Wallet -> VDXApi: GET /v1/consent/requests/agr_xyz789
+activate VDXApi
+
+VDXApi -> ExchangeSvc: getConsentRequest()
+activate ExchangeSvc
+
+ExchangeSvc -> ExchangeSvc: Retrieve agreement details
+
+ExchangeSvc --> VDXApi: Consent request data
+deactivate ExchangeSvc
+
+VDXApi --> Wallet: Consent request details
+deactivate VDXApi
+
+== 3. Display Consent Screen (GDPR Transparent) ==
+
+Wallet -> Employee: Show consent screen
+
+note right of Wallet
+  **GDPR Consent Screen:**
+  
+  ╔════════════════════════════════════╗
+  ║ Data Sharing Request               ║
+  ╠════════════════════════════════════╣
+  ║ YOUR EMPLOYER requests permission  ║
+  ║ to share your credential with:     ║
+  ║                                    ║
+  ║ 📋 VerifyPro Inc.                  ║
+  ║    Background check provider       ║
+  ╠════════════════════════════════════╣
+  ║ Purpose:                           ║
+  ║ Pre-employment verification for    ║
+  ║ contract work assignment           ║
+  ║                                    ║
+  ║ Legal Basis:                       ║
+  ║ Contract (GDPR Article 6.1.b)      ║
+  ╠════════════════════════════════════╣
+  ║ Data to be shared:                 ║
+  ║ ✓ Your name                        ║
+  ║ ✓ Job title                        ║
+  ║ ✓ Employment start date            ║
+  ║ ✓ Employment end date              ║
+  ║                                    ║
+  ║ Not shared:                        ║
+  ║ ✗ Employee ID                      ║
+  ║ ✗ Email address                    ║
+  ║ ✗ Department                       ║
+  ║ ✗ Salary information               ║
+  ╠════════════════════════════════════╣
+  ║ Data Retention:                    ║
+  ║ 7 years (legal requirement)        ║
+  ║                                    ║
+  ║ Your Rights:                       ║
+  ║ • View shared data                 ║
+  ║ • Revoke consent anytime           ║
+  ║ • Request data deletion            ║
+  ║ • Audit trail access               ║
+  ╠════════════════════════════════════╣
+  ║ [View Full Agreement]              ║
+  ║                                    ║
+  ║     [Consent]    [Decline]         ║
+  ╚════════════════════════════════════╝
+end note
+
+Employee -> Wallet: Review consent details
+Employee -> Wallet: View full agreement
+
+Wallet -> Employee: Show detailed GDPR info
+
+note right of Employee
+  **GDPR Compliance:**
+  
+  The employee sees:
+  • Exactly what data is shared
+  • Why it's being shared (purpose)
+  • Legal basis (contract)
+  • Who will receive it
+  • How long it's kept
+  • Their rights (access, deletion, revoke)
+  
+  Fully transparent & compliant
+end note
+
+Employee -> Wallet: Grant consent
+deactivate Employee
+
+== 4. Record Consent (GDPR Proof) ==
+
+Wallet -> Wallet: Generate consent proof
+
+note right of Wallet
+  **Consent Record:**
+  
+  {
+    "agreementId": "agr_xyz789",
+    "subject": "did:ion:EiEmployee...",
+    "consented": true,
+    "timestamp": "2024-01-15T14:30:00Z",
+    "version": "1.0",
+    "proof": {
+      "type": "Ed25519Signature2020",
+      "created": "2024-01-15T14:30:00Z",
+      "verificationMethod": "did:ion:EiEmployee...#key-1",
+      "proofPurpose": "authentication",
+      "proofValue": "<signature>"
+    }
+  }
+  
+  Cryptographically signed by employee
+  Proves explicit consent
+end note
+
+Wallet -> VDXApi: POST /v1/consent/grant
+activate VDXApi
+
+VDXApi -> ConsentRegistry: recordConsent()
+activate ConsentRegistry
+
+ConsentRegistry -> ConsentRegistry: Store consent record
+ConsentRegistry -> ConsentRegistry: Verify signature
+ConsentRegistry -> ConsentRegistry: Generate consent ID
+
+note right of ConsentRegistry
+  **Consent Registry:**
+  
+  Consent ID: consent_abc123
+  Agreement ID: agr_xyz789
+  Subject: did:ion:EiEmployee...
+  Status: Granted
+  Timestamp: 2024-01-15T14:30:00Z
+  
+  Immutable audit trail
+  Can be revoked by subject anytime
+end note
+
+ConsentRegistry --> VDXApi: Consent recorded
+deactivate ConsentRegistry
+
+VDXApi -> AuditLog: logEvent(CONSENT_GRANTED)
+activate AuditLog
+
+AuditLog -> AuditLog: Log consent event
+
+note right of AuditLog
+  **Audit Log Entry:**
+  
+  Event: CONSENT_GRANTED
+  Agreement: agr_xyz789
+  Subject: did:ion:EiEmployee...
+  Timestamp: 2024-01-15T14:30:00Z
+  IP: [masked]
+  Device: Mobile Wallet
+  
+  Immutable audit trail for compliance
+end note
+
+AuditLog --> VDXApi: Logged
+deactivate AuditLog
+
+VDXApi --> Wallet: Consent registered
+deactivate VDXApi
+
+Wallet -> Employee: Consent recorded
+activate Employee
+deactivate Employee
+
+== 5. Credential Preparation & Selective Disclosure ==
+
+Wallet -> Wallet: Retrieve EmployeeID credential
+Wallet -> Wallet: Apply selective disclosure policy
+
+note right of Wallet
+  **Selective Disclosure:**
+  
+  Original Credential contains:
+  • employeeId: E12345
+  • displayName: John Doe
+  • email: john.doe@acme.com
+  • department: Engineering
+  • jobTitle: Senior Developer
+  • startDate: 2020-01-01
+  • endDate: null
+  
+  Agreement requires only:
+  • displayName ✓
+  • jobTitle ✓
+  • startDate ✓
+  • endDate ✓
+  
+  Filter out:
+  • employeeId ✗
+  • email ✗
+  • department ✗
+  
+  Minimize data exposure (GDPR principle)
+end note
+
+Wallet -> Wallet: Create filtered presentation
+
+Wallet -> Wallet: Generate verifiable presentation
+Wallet -> Wallet: Sign presentation with holder DID
+
+note right of Wallet
+  **Verifiable Presentation:**
+  
+  {
+    "@context": "https://www.w3.org/2018/credentials/v1",
+    "type": "VerifiablePresentation",
+    "verifiableCredential": [{
+      ...credential with only agreed claims...
+    }],
+    "holder": "did:ion:EiEmployee...",
+    "proof": {
+      "type": "Ed25519Signature2020",
+      "created": "2024-01-15T14:31:00Z",
+      "verificationMethod": "did:ion:EiEmployee...#key-1",
+      "proofPurpose": "authentication",
+      "proofValue": "<signature>"
+    }
+  }
+end note
+
+Wallet -> Wallet: Include consent proof
+Wallet -> Wallet: Package for VDX
+
+== 6. Secure Transfer via VDX Platform ==
+
+Wallet -> VDXApi: POST /v1/exchange/submit
+activate VDXApi
+
+note right of Wallet
+  **Submit to VDX:**
+  
+  POST https://vdx.sphereon.com/v1/exchange/submit
+  
+  {
+    "agreementId": "agr_xyz789",
+    "consentId": "consent_abc123",
+    "presentation": "<verifiable_presentation>",
+    "submitter": "did:ion:EiEmployee..."
+  }
+end note
+
+VDXApi -> VDXApi: Validate request
+VDXApi -> ConsentRegistry: verifyConsent()
+activate ConsentRegistry
+
+ConsentRegistry -> ConsentRegistry: Check consent exists
+ConsentRegistry -> ConsentRegistry: Verify not revoked
+ConsentRegistry -> ConsentRegistry: Match subject DID
+
+ConsentRegistry --> VDXApi: Consent valid
+deactivate ConsentRegistry
+
+VDXApi -> ExchangeSvc: processExchange()
+activate ExchangeSvc
+
+ExchangeSvc -> ExchangeSvc: Validate presentation signature
+ExchangeSvc -> ExchangeSvc: Verify credential signature
+ExchangeSvc -> ExchangeSvc: Check claims match agreement
+
+note right of ExchangeSvc
+  **Validation Checks:**
+  
+  ✓ Consent valid & not revoked
+  ✓ Presentation signature valid
+  ✓ Credential signature valid
+  ✓ Issuer DID matches (Acme Corp)
+  ✓ Subject DID matches (Employee)
+  ✓ Claims match agreement spec
+  ✓ No extra data included
+  
+  All checks passed
+end note
+
+ExchangeSvc -> ExchangeSvc: Encrypt for Company B
+
+note right of ExchangeSvc
+  **End-to-End Encryption:**
+  
+  Encrypt presentation with Company B's public key
+  (from their DID document)
+  
+  Only Company B can decrypt
+  VDX platform cannot read content
+  
+  Algorithm: ECDH-ES+A256KW
+  Encryption key: Company B's X25519 key
+end note
+
+ExchangeSvc -> ExchangeSvc: Store encrypted package
+
+ExchangeSvc --> VDXApi: Exchange processed
+deactivate ExchangeSvc
+
+VDXApi -> AuditLog: logEvent(DATA_EXCHANGED)
+activate AuditLog
+
+AuditLog -> AuditLog: Log exchange event
+
+note right of AuditLog
+  **Audit Log Entry:**
+  
+  Event: DATA_EXCHANGED
+  Agreement: agr_xyz789
+  From: did:web:acme.com
+  To: did:web:verifypro.com
+  Subject: did:ion:EiEmployee...
+  Timestamp: 2024-01-15T14:32:00Z
+  Claims: displayName, jobTitle, startDate, endDate
+  
+  Complete audit trail
+end note
+
+AuditLog --> VDXApi: Logged
+deactivate AuditLog
+
+VDXApi --> Wallet: Exchange successful
+deactivate VDXApi
+
+Wallet -> Employee: Data shared securely
+activate Employee
+deactivate Employee
+
+== 7. Notify Company B (Data Processor) ==
+
+VDXApi -> Notifier: notifyRecipient(CompanyB)
+activate Notifier
+
+Notifier -> CompanyB: POST webhook notification
+activate CompanyB
+
+note right of Notifier
+  **Webhook Notification:**
+  
+  POST https://verifypro.com/webhooks/vdx
+  
+  {
+    "event": "credential_available",
+    "agreementId": "agr_xyz789",
+    "exchangeId": "ex_789xyz",
+    "timestamp": "2024-01-15T14:32:00Z"
+  }
+end note
+
+CompanyB --> Notifier: 200 OK
+deactivate CompanyB
+
+Notifier --> VDXApi: Notification sent
+deactivate Notifier
+
+== 8. Company B Retrieves & Validates Data ==
+
+CompanyB -> VDXApi: GET /v1/exchange/ex_789xyz
+activate VDXApi
+activate CompanyB
+
+VDXApi -> VDXApi: Authenticate Company B
+VDXApi -> VDXApi: Verify authorized recipient
+
+VDXApi -> ExchangeSvc: getExchangeData()
+activate ExchangeSvc
+
+ExchangeSvc -> ExchangeSvc: Retrieve encrypted package
+ExchangeSvc --> VDXApi: Encrypted presentation
+deactivate ExchangeSvc
+
+VDXApi --> CompanyB: Encrypted presentation
+deactivate VDXApi
+
+CompanyB -> CompanyB: Decrypt with private key
+
+note right of CompanyB
+  **Decryption:**
+  
+  Using Company B's private key
+  (corresponding to public key in DID doc)
+  
+  Decrypted presentation:
+  {
+    "verifiableCredential": {
+      "credentialSubject": {
+        "displayName": "John Doe",
+        "jobTitle": "Senior Developer",
+        "startDate": "2020-01-01",
+        "endDate": null
+      }
+    }
+  }
+end note
+
+CompanyB -> CompanyB: Validate presentation
+CompanyB -> CompanyB: Verify signatures
+CompanyB -> CompanyB: Process for background check
+
+CompanyB -> VDXApi: POST /v1/exchange/confirm
+activate VDXApi
+
+VDXApi -> AuditLog: logEvent(DATA_RETRIEVED)
+activate AuditLog
+AuditLog -> AuditLog: Log retrieval
+AuditLog --> VDXApi: Logged
+deactivate AuditLog
+
+VDXApi --> CompanyB: Confirmed
+deactivate VDXApi
+deactivate CompanyB
+
+== 9. Employee Access to Audit Trail ==
+
+Employee -> Wallet: View "My Data Sharing"
+activate Employee
+activate Wallet
+
+Wallet -> VDXApi: GET /v1/consent/audit?subject=did:ion:EiEmployee...
+activate VDXApi
+
+VDXApi -> AuditLog: getAuditTrail()
+activate AuditLog
+
+AuditLog -> AuditLog: Retrieve subject's audit events
+
+AuditLog --> VDXApi: Audit trail
+deactivate AuditLog
+
+VDXApi --> Wallet: Audit events
+deactivate VDXApi
+
+Wallet -> Employee: Display audit trail
+
+note right of Wallet
+  **Transparency Dashboard:**
+  
+  ╔════════════════════════════════════╗
+  ║ My Data Sharing Activity           ║
+  ╠════════════════════════════════════╣
+  ║ Agreement: agr_xyz789              ║
+  ║ With: VerifyPro Inc.               ║
+  ║                                    ║
+  ║ Timeline:                          ║
+  ║ ────────────────────────────────── ║
+  ║ ✓ Consent Granted                  ║
+  ║   2024-01-15 14:30:00              ║
+  ║                                    ║
+  ║ ✓ Data Shared                      ║
+  ║   2024-01-15 14:32:00              ║
+  ║   Claims: name, title, dates       ║
+  ║                                    ║
+  ║ ✓ Data Retrieved                   ║
+  ║   2024-01-15 14:35:00              ║
+  ║   By: VerifyPro Inc.               ║
+  ║                                    ║
+  ║ Status: Active                     ║
+  ║ Retention: 7 years                 ║
+  ║                                    ║
+  ║ [Revoke Consent] [Request Deletion]║
+  ╚════════════════════════════════════╝
+  
+  Complete transparency (GDPR Art. 15)
+end note
+
+Employee -> Wallet: Review audit trail
+deactivate Employee
+deactivate Wallet
+
+== Summary ==
+
+note over Employee, CompanyB
+  **Sphereon VDX B2B Credential Exchange Complete**
+  
+  **Flow Summary:**
+  1. Company B requests employee credential from Company A
+  2. Company A creates exchange agreement via VDX
+  3. Employee receives consent request (push notification)
+  4. Employee reviews GDPR-compliant consent screen
+  5. Employee grants explicit consent (cryptographic proof)
+  6. Wallet applies selective disclosure (minimization)
+  7. Wallet submits credential to VDX (encrypted)
+  8. VDX validates consent & credentials
+  9. VDX encrypts data for Company B (E2E encryption)
+  10. Company B retrieves & decrypts data
+  11. Complete audit trail logged
+  12. Employee can view transparency dashboard
+  
+  **GDPR Compliance Features:**
+  ✓ Lawfulness (Art. 6): Legal basis specified (contract)
+  ✓ Purpose Limitation (Art. 5.1.b): Purpose clearly defined
+  ✓ Data Minimization (Art. 5.1.c): Selective disclosure
+  ✓ Transparency (Art. 5.1.a): Clear consent screen
+  ✓ Explicit Consent (Art. 7): Cryptographic proof
+  ✓ Right to Access (Art. 15): Audit trail dashboard
+  ✓ Right to Erasure (Art. 17): Revoke consent option
+  ✓ Accountability (Art. 5.2): Immutable audit log
+  ✓ Retention Periods: Clearly specified (7 years)
+  
+  **Security Features:**
+  ✓ Cryptographic consent proof (signed by employee)
+  ✓ End-to-end encryption (only recipient can decrypt)
+  ✓ Selective disclosure (minimum data shared)
+  ✓ Verifiable credentials (tamper-proof)
+  ✓ DID-based authentication (all parties)
+  ✓ Immutable audit trail
+  
+  **Platform Benefits:**
+  • No direct company-to-company integration needed
+  • VDX mediates secure exchange
+  • Automatic GDPR compliance
+  • Employee maintains control
+  • Full transparency & audit
+  • Consent management built-in
+  • Scalable B2B data exchange
+  
+  **Employee Benefits:**
+  • Control over personal data
+  • Explicit consent required
+  • Full transparency (who, what, when)
+  • Revoke consent anytime
+  • Request data deletion
+  • Audit trail access
+  • Data minimization (privacy)
+  
+  **Business Benefits:**
+  • Simplified B2B data exchange
+  • GDPR compliance automated
+  • Reduced legal risk
+  • Audit-ready documentation
+  • Scalable to multiple partners
+  • Verifiable credentials (trust)
+  
+  The VDX platform enables secure, GDPR-compliant
+  B2B credential exchange while giving employees
+  full control and transparency over their data.
+end note
+
+@enduml

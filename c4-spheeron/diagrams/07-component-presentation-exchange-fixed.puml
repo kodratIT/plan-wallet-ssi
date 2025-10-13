@@ -1,0 +1,72 @@
+@startuml Sphereon Wallet - Presentation Exchange Engine
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Component Diagram: Presentation Exchange (PEx) v2 Engine\n[Complete Credential Matching and Presentation Generation]
+
+Container_Boundary(pex_engine, "Presentation Exchange Engine") {
+    
+    Component(pex_orchestrator, "PEx Orchestrator", "Main Controller", "Workflow coordination: parse definition, match credentials, evaluate constraints, user selection, build/validate presentation")
+    
+    Container_Boundary(definition_parser, "Presentation Definition Parser") {
+        Component(pd_parser, "Definition Parser", "JSON Parser", "Parse/validate PEx v2 definitions: extract metadata, format constraints, submission requirements, input descriptors")
+        
+        Component(input_descriptor_parser, "Input Descriptor Parser", "Descriptor Parser", "Parse input descriptors with constraints, fields (JSONPath), predicates, and filters (JSON Schema)")
+        
+        Component(submission_req_parser, "Submission Requirement Parser", "Requirement Parser", "Parse submission requirements: all, pick (count/min/max), from groups, nested rules")
+    }
+    
+    Container_Boundary(matching_engine, "Credential Matching Engine") {
+        Component(credential_matcher, "Credential Matcher", "Main Matcher", "Match credentials to descriptors: format/schema/issuer/field checks with scoring algorithm")
+        
+        Component(format_matcher, "Format Matcher", "Format Validation", "Check format compatibility: jwt_vc, ldp_vc, sd-jwt with algorithm constraints")
+        
+        Component(schema_matcher, "Schema Matcher", "Schema/Type Matching", "Match credential type and schema references against requirements")
+        
+        Component(issuer_matcher, "Issuer Matcher", "Issuer Validation", "Match issuer requirements: exact, enum, pattern, DID method, trust level")
+        
+        Component(attribute_matcher, "Attribute Matcher", "Field Constraint Evaluation", "Match field-level constraints using JSONPath evaluation and JSON Schema filters")
+    }
+    
+    Component(constraint_evaluator, "Constraint Evaluator", "Advanced Constraints", "Evaluate: subject_is_issuer, is_holder, same_subject, statuses, limit_disclosure")
+    
+    Component(predicate_evaluator, "Predicate Evaluator", "Zero-Knowledge Predicates", "Evaluate ZKP predicates for privacy-preserving proofs: comparisons, ranges, membership")
+    
+    Component(presentation_builder, "Presentation Builder", "VP Generator", "Build Verifiable Presentation with selective disclosure, descriptor map, holder signature")
+    
+    Component(submission_validator, "Submission Validator", "Validation Engine", "Validate presentation submission against definition: structure, descriptor map, constraints, signatures")
+}
+
+System_Ext(credential_storage, "Credential Storage", "Stored credentials")
+System_Ext(did_resolver, "DID Resolver", "Resolve holder DID")
+System_Ext(kms, "Key Management System", "Sign presentations")
+System_Ext(ui_layer, "UI Layer", "User credential selection")
+
+Rel(pex_orchestrator, pd_parser, "Parses definition")
+Rel(pex_orchestrator, credential_matcher, "Matches credentials")
+Rel(pex_orchestrator, constraint_evaluator, "Evaluates constraints")
+Rel(pex_orchestrator, presentation_builder, "Builds presentation")
+Rel(pex_orchestrator, submission_validator, "Validates submission")
+Rel(pex_orchestrator, ui_layer, "User selection")
+
+Rel(pd_parser, input_descriptor_parser, "Parses descriptors")
+Rel(pd_parser, submission_req_parser, "Parses requirements")
+
+Rel(credential_matcher, format_matcher, "Checks format")
+Rel(credential_matcher, schema_matcher, "Checks schema/type")
+Rel(credential_matcher, issuer_matcher, "Checks issuer")
+Rel(credential_matcher, attribute_matcher, "Matches fields")
+Rel(credential_matcher, credential_storage, "Queries credentials")
+
+Rel(constraint_evaluator, predicate_evaluator, "Evaluates ZKP predicates")
+
+Rel(presentation_builder, did_resolver, "Resolves holder DID")
+Rel(presentation_builder, kms, "Signs presentation")
+
+Rel(submission_validator, attribute_matcher, "Validates fields")
+
+SHOW_LEGEND()
+
+@enduml

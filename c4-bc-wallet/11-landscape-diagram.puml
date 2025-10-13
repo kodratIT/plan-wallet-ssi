@@ -1,0 +1,98 @@
+@startuml BC Wallet - Landscape Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_LANDSCAPE()
+LAYOUT_WITH_LEGEND()
+
+title Enterprise Landscape - BC Wallet in BC Government Digital Identity Ecosystem
+
+Person(resident, "BC Resident", "Citizen of British Columbia")
+Person(service_provider, "Service Provider", "Government or private service")
+Person(credential_issuer, "Credential Issuer", "Issues verifiable credentials")
+
+Enterprise_Boundary(bc_wallet_ecosystem, "BC Wallet Ecosystem") {
+    System(bc_wallet, "BC Wallet Mobile", "SSI mobile wallet for managing verifiable credentials")
+    
+    System(bc_services_card, "BC Services Card", "Level 3 identity assurance service")
+    
+    System(ias, "Identity Assurance Service", "In-person identity verification")
+}
+
+Enterprise_Boundary(bc_gov_services, "BC Government Services") {
+    System_Ext(drivers_license, "Driver License Service", "Issues driver license credentials")
+    
+    System_Ext(healthcare, "Healthcare Services", "Medical credentials and records")
+    
+    System_Ext(vital_stats, "Vital Statistics", "Birth/marriage/death certificates")
+    
+    System_Ext(education, "Education Records", "Student credentials and transcripts")
+    
+    System_Ext(business_reg, "Business Registry", "Business registration credentials")
+}
+
+Enterprise_Boundary(ssi_infrastructure, "SSI Infrastructure") {
+    System_Ext(indy_ledger, "Hyperledger Indy Ledger", "Distributed ledger for public DIDs and schemas")
+    
+    System_Ext(mediator, "Mediator Service", "DIDComm message routing")
+    
+    System_Ext(universal_resolver, "Universal DID Resolver", "Resolves DIDs across methods")
+}
+
+Enterprise_Boundary(external_services, "External Verification Services") {
+    System_Ext(private_verifiers, "Private Sector Verifiers", "Banks, employers, online services")
+    
+    System_Ext(federal_services, "Federal Services", "Federal government services")
+    
+    System_Ext(other_provinces, "Other Provincial Services", "Interprovincial credentials")
+}
+
+Enterprise_Boundary(app_distribution, "App Distribution & Updates") {
+    System_Ext(google_play, "Google Play Store", "Android app distribution")
+    
+    System_Ext(apple_store, "Apple App Store", "iOS app distribution")
+    
+    System_Ext(push_services, "Push Notification Services", "FCM and APNs")
+}
+
+' Primary User Flows
+Rel(resident, bc_wallet, "Manages digital identity")
+Rel(resident, bc_services_card, "Authenticates with")
+Rel(service_provider, bc_wallet, "Requests proofs from")
+Rel(credential_issuer, bc_wallet, "Issues credentials to")
+
+' BC Wallet Connections
+Rel(bc_wallet, bc_services_card, "Authenticates", "OAuth2/OIDC")
+Rel(bc_wallet, ias, "Verifies identity", "REST API")
+Rel(bc_wallet, indy_ledger, "Reads schemas", "Indy protocol")
+Rel(bc_wallet, mediator, "Routes messages", "DIDComm")
+Rel(bc_wallet, universal_resolver, "Resolves DIDs", "DID resolution")
+
+' Government Services Integration
+Rel(drivers_license, bc_wallet, "Issues credentials", "Aries protocol")
+Rel(healthcare, bc_wallet, "Issues credentials", "Aries protocol")
+Rel(vital_stats, bc_wallet, "Issues credentials", "Aries protocol")
+Rel(education, bc_wallet, "Issues credentials", "Aries protocol")
+Rel(business_reg, bc_wallet, "Issues credentials", "Aries protocol")
+
+Rel(drivers_license, bc_services_card, "Verifies identity")
+Rel(healthcare, bc_services_card, "Verifies identity")
+Rel(vital_stats, bc_services_card, "Verifies identity")
+
+' External Verification
+Rel(private_verifiers, bc_wallet, "Requests proofs", "Aries protocol")
+Rel(federal_services, bc_wallet, "Requests proofs", "Aries protocol")
+Rel(other_provinces, bc_wallet, "Requests proofs", "Aries protocol")
+
+' Infrastructure Dependencies
+Rel(drivers_license, indy_ledger, "Publishes schemas")
+Rel(private_verifiers, indy_ledger, "Reads public keys")
+Rel(mediator, push_services, "Triggers notifications")
+
+' App Distribution
+Rel(bc_wallet, google_play, "Distributed via")
+Rel(bc_wallet, apple_store, "Distributed via")
+Rel(push_services, bc_wallet, "Notifies")
+
+SHOW_LEGEND()
+
+@enduml

@@ -1,0 +1,682 @@
+@startuml 11-seq-restore-from-backup
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Restore Wallet from Encrypted Backup\n**Full Recovery on New Device**
+
+actor "User" as User
+participant "Welcome\nScreen" as WelcomeUI
+participant "Restore\nManager" as RestoreMgr
+participant "Cloud\nService\n(iCloud/Drive)" as Cloud
+participant "Encryption\nService" as EncryptSvc
+participant "Key\nManager" as KeyMgr
+participant "Database\nManager" as DBMgr
+participant "DID\nManager" as DIDMgr
+participant "Credential\nStore" as CredStore
+participant "Connection\nStore" as ConnStore
+participant "DIDComm\nMediator" as Mediator
+
+== 1. Initiate Restore ==
+
+User -> WelcomeUI: Install app on new device
+activate WelcomeUI
+
+WelcomeUI -> User: Welcome to Sphereon Wallet
+WelcomeUI -> User: Options:\n- Create new wallet\n- Restore from backup
+
+note left of User
+  **Restore Scenario:**
+  User lost/replaced device
+  Has backup in cloud
+  Remembers backup password
+  May or may not remember PIN
+end note
+
+User -> WelcomeUI: Select "Restore from backup"
+
+WelcomeUI -> User: Restore options:\n- From cloud (iCloud/Drive)\n- From file
+
+User -> WelcomeUI: Select "From cloud"
+
+== 2. Authenticate to Cloud ==
+
+WelcomeUI -> RestoreMgr: initiateRestore(source: "cloud")
+activate RestoreMgr
+
+RestoreMgr -> Cloud: Authenticate
+activate Cloud
+
+alt iOS
+  Cloud -> User: Sign in with Apple ID
+  User -> Cloud: Apple ID credentials
+  Cloud -> Cloud: OAuth authentication
+else Android
+  Cloud -> User: Sign in with Google
+  User -> Cloud: Google credentials
+  Cloud -> Cloud: OAuth authentication
+end
+
+Cloud -> Cloud: Grant app access to storage
+Cloud --> RestoreMgr: Authentication successful
+deactivate Cloud
+
+== 3. List Available Backups ==
+
+RestoreMgr -> Cloud: listBackupFiles()
+activate Cloud
+
+Cloud -> Cloud: Search for "sphereon_backup_*.bak"
+Cloud -> Cloud: Find backup files
+
+Cloud --> RestoreMgr: List of backups
+deactivate Cloud
+
+note right of Cloud
+  **Found Backups:**
+  1. sphereon_backup_20240115_abc123.bak
+     Date: 2024-01-15 12:00
+     Size: 2.4 MB
+     
+  2. sphereon_backup_20240108_abc123.bak
+     Date: 2024-01-08 09:30
+     Size: 2.1 MB
+     
+  3. sphereon_backup_20240101_abc123.bak
+     Date: 2024-01-01 15:45
+     Size: 1.8 MB
+end note
+
+alt No backups found
+  RestoreMgr -> WelcomeUI: No backups found
+  WelcomeUI -> User: No backups in your cloud storage
+  WelcomeUI -> User: Options:\n- Try different account\n- Restore from file\n- Create new wallet
+  deactivate RestoreMgr
+  deactivate WelcomeUI
+  [<-- User
+end
+
+RestoreMgr -> RestoreMgr: For each backup:\n- Download metadata file
+
+loop For each backup
+  RestoreMgr -> Cloud: Download metadata
+  activate Cloud
+  Cloud --> RestoreMgr: Metadata JSON
+  deactivate Cloud
+  
+  RestoreMgr -> RestoreMgr: Parse metadata
+  RestoreMgr -> RestoreMgr: Extract:\n- Wallet ID\n- Date\n- Size\n- Credential count\n- DIDs count
+end
+
+RestoreMgr -> WelcomeUI: Display backups with details
+deactivate RestoreMgr
+
+WelcomeUI -> User: Select backup to restore:
+WelcomeUI -> User: [1] 2024-01-15 (15 credentials, 3 DIDs)\n[2] 2024-01-08 (12 credentials, 2 DIDs)\n[3] 2024-01-01 (8 credentials, 1 DID)
+
+User -> WelcomeUI: Select backup #1 (most recent)
+
+== 4. Download Backup ==
+
+WelcomeUI -> RestoreMgr: downloadBackup(backup_id)
+activate RestoreMgr
+
+RestoreMgr -> Cloud: Download backup file
+activate Cloud
+
+Cloud -> Cloud: Stream download (chunked)
+RestoreMgr -> WelcomeUI: Downloading... X%
+WelcomeUI -> User: Downloading backup: 45%
+
+Cloud --> RestoreMgr: Backup file (encrypted)
+deactivate Cloud
+
+RestoreMgr -> RestoreMgr: Save to temporary location
+RestoreMgr -> RestoreMgr: Verify file size matches metadata
+
+alt Size mismatch
+  RestoreMgr -> WelcomeUI: Download corrupted
+  WelcomeUI -> User: Error: Download incomplete\nRetrying...
+  RestoreMgr -> RestoreMgr: Retry download
+end
+
+RestoreMgr -> Cloud: Download metadata file
+activate Cloud
+Cloud --> RestoreMgr: Metadata JSON
+deactivate Cloud
+
+RestoreMgr -> RestoreMgr: Parse encryption parameters:\n- Salt\n- IV\n- KDF iterations\n- Algorithm
+
+== 5. Password Entry ==
+
+RestoreMgr -> WelcomeUI: requestBackupPassword()
+deactivate RestoreMgr
+
+WelcomeUI -> User: Enter backup password
+
+note left of User
+  **CRITICAL:**
+  This is the backup password
+  created during backup,
+  NOT the device PIN.
+  
+  Without correct password,
+  backup cannot be decrypted.
+end note
+
+User -> WelcomeUI: Input backup password
+
+WelcomeUI -> RestoreMgr: password entered
+activate RestoreMgr
+
+== 6. Derive Decryption Key ==
+
+RestoreMgr -> EncryptSvc: deriveKeyFromPassword(password, salt)
+activate EncryptSvc
+
+note right of EncryptSvc
+  **Key Derivation:**
+  Use same parameters as backup:
+  - Algorithm: PBKDF2-HMAC-SHA256
+  - Salt: from metadata (same as backup)
+  - Iterations: 100,000
+  - Output: 32 bytes
+  
+  If password correct:
+  → Same key as original
+  → Decryption will succeed
+  
+  If password wrong:
+  → Different key
+  → Decryption will fail
+  → Authentication tag won't match
+end note
+
+EncryptSvc -> EncryptSvc: Extract salt from metadata
+EncryptSvc -> EncryptSvc: Apply PBKDF2-HMAC-SHA256
+EncryptSvc -> EncryptSvc: 100,000 iterations
+
+WelcomeUI -> User: Deriving key... (may take a few seconds)
+
+EncryptSvc --> RestoreMgr: Decryption key
+deactivate EncryptSvc
+
+== 7. Decrypt Backup ==
+
+RestoreMgr -> EncryptSvc: decryptBackup(encrypted_data, key, iv)
+activate EncryptSvc
+
+EncryptSvc -> EncryptSvc: Extract IV from metadata
+EncryptSvc -> EncryptSvc: Extract authentication tag\n(last 16 bytes)
+
+EncryptSvc -> EncryptSvc: Attempt AES-256-GCM decryption
+
+note right of EncryptSvc
+  **Decryption Process:**
+  1. Setup AES-256-GCM cipher
+  2. Key: derived from password
+  3. IV: from metadata
+  4. Decrypt ciphertext
+  5. Verify authentication tag
+  
+  If tag invalid:
+  → Wrong password OR
+  → Data corrupted OR
+  → Data tampered
+end note
+
+alt Authentication tag invalid (wrong password)
+  EncryptSvc --> RestoreMgr: Decryption failed
+  RestoreMgr --> WelcomeUI: Wrong password
+  WelcomeUI -> User: ❌ Incorrect backup password\nPlease try again
+  deactivate EncryptSvc
+  deactivate RestoreMgr
+  User -> WelcomeUI: Re-enter password
+  WelcomeUI -> RestoreMgr: Retry with new password
+  activate RestoreMgr
+  [-> RestoreMgr: Go back to step 6
+end
+
+EncryptSvc -> EncryptSvc: Tag valid ✓
+EncryptSvc -> EncryptSvc: Decryption successful
+
+EncryptSvc --> RestoreMgr: Plaintext backup bundle
+deactivate EncryptSvc
+
+WelcomeUI -> User: ✓ Password correct!\nRestoring data...
+
+== 8. Validate Backup Structure ==
+
+RestoreMgr -> RestoreMgr: Parse JSON bundle
+
+RestoreMgr -> RestoreMgr: Validate structure
+note right of RestoreMgr
+  **Validation Checks:**
+  ✓ Valid JSON format
+  ✓ Version compatible
+  ✓ Required sections present:
+    - seed
+    - dids
+    - credentials
+    - connections
+    - settings
+  ✓ Wallet ID present
+  ✓ Data integrity (checksums)
+end note
+
+alt Invalid structure
+  RestoreMgr -> WelcomeUI: Backup corrupted
+  WelcomeUI -> User: Error: Backup file corrupted\nCannot restore
+  deactivate RestoreMgr
+  deactivate WelcomeUI
+  [<-- User
+end
+
+RestoreMgr -> RestoreMgr: Check backup version
+RestoreMgr -> RestoreMgr: Version: 1.0 (compatible ✓)
+
+alt Incompatible version
+  RestoreMgr -> WelcomeUI: Version mismatch
+  WelcomeUI -> User: Error: Backup from incompatible app version\nPlease update app
+  deactivate RestoreMgr
+  deactivate WelcomeUI
+  [<-- User
+end
+
+RestoreMgr -> RestoreMgr: Calculate data checksum
+RestoreMgr -> RestoreMgr: Verify against stored checksum
+
+alt Checksum mismatch
+  RestoreMgr -> WelcomeUI: Data corrupted
+  WelcomeUI -> User: Error: Backup data corrupted
+  deactivate RestoreMgr
+  deactivate WelcomeUI
+  [<-- User
+end
+
+RestoreMgr -> RestoreMgr: All validations passed ✓
+
+== 9. Restore Seed & Keys ==
+
+RestoreMgr -> RestoreMgr: Extract encrypted seed from backup
+
+note right of RestoreMgr
+  **Seed Restoration:**
+  Backup contains seed that was
+  encrypted with OLD device PIN.
+  
+  Need to:
+  1. Import encrypted seed
+  2. Ask user for NEW device PIN
+  3. Re-encrypt seed with new PIN
+end note
+
+WelcomeUI -> User: Create PIN for this device
+User -> WelcomeUI: Enter new PIN (6 digits)
+WelcomeUI -> User: Confirm new PIN
+User -> WelcomeUI: Re-enter PIN
+
+RestoreMgr -> KeyMgr: importSeed(encrypted_seed, new_pin)
+activate KeyMgr
+
+note right of KeyMgr
+  **Seed Re-encryption:**
+  Old: encrypted with old device PIN
+  New: encrypt with new device PIN
+  
+  Process:
+  1. Store encrypted seed temporarily
+  2. Derive new encryption key from new PIN
+  3. Re-encrypt seed with new key
+  4. Store in Keystore
+  
+  Mnemonic not needed for restore
+  (as long as backup exists)
+end note
+
+KeyMgr -> KeyMgr: Derive new encryption key\nfrom new PIN (Argon2id)
+KeyMgr -> KeyMgr: Re-encrypt seed with new key
+
+KeyMgr -> KeyMgr: Store in device Keystore
+KeyMgr -> KeyMgr: Hardware-backed storage
+
+KeyMgr --> RestoreMgr: Seed imported ✓
+deactivate KeyMgr
+
+RestoreMgr -> KeyMgr: deriveKeysFromSeed()
+activate KeyMgr
+
+KeyMgr -> KeyMgr: Derive master key (BIP32)
+KeyMgr -> KeyMgr: Derive child keys (BIP44 paths)
+KeyMgr -> KeyMgr: Re-generate key pairs\n(Ed25519, X25519)
+KeyMgr -> KeyMgr: Store keys in Keystore
+
+note right of KeyMgr
+  **Key Regeneration:**
+  Same seed → Same keys
+  All cryptographic keys
+  deterministically regenerated
+  from seed.
+  
+  ✓ Signing keys (Ed25519)
+  ✓ Encryption keys (X25519)
+  ✓ Master encryption key
+end note
+
+KeyMgr --> RestoreMgr: Keys restored ✓
+deactivate KeyMgr
+
+RestoreMgr -> WelcomeUI: Progress: 20%
+
+== 10. Restore Database ==
+
+RestoreMgr -> DBMgr: initializeDatabase()
+activate DBMgr
+
+DBMgr -> DBMgr: Drop existing DB (if any)
+DBMgr -> DBMgr: Create new database
+DBMgr -> DBMgr: Run migrations (create tables)
+
+DBMgr --> RestoreMgr: Database ready
+deactivate DBMgr
+
+RestoreMgr -> WelcomeUI: Progress: 30%
+
+== 11. Restore DIDs ==
+
+RestoreMgr -> RestoreMgr: Extract DIDs from backup
+
+loop For each DID in backup
+  RestoreMgr -> RestoreMgr: Parse DID data
+  
+  RestoreMgr -> DIDMgr: importDID(did, document, metadata)
+  activate DIDMgr
+  
+  DIDMgr -> DIDMgr: Validate DID format
+  DIDMgr -> DIDMgr: Validate DID document
+  DIDMgr -> DIDMgr: Check keys exist in KeyManager
+  
+  DIDMgr -> DBMgr: storeDID(did, document)
+  activate DBMgr
+  DBMgr -> DBMgr: INSERT INTO DIDs
+  DBMgr --> DIDMgr: Stored
+  deactivate DBMgr
+  
+  alt Is default DID
+    DIDMgr -> DIDMgr: Set as default DID
+  end
+  
+  DIDMgr --> RestoreMgr: DID imported ✓
+  deactivate DIDMgr
+  
+  RestoreMgr -> WelcomeUI: Progress: 35% (+1 DID)
+end
+
+RestoreMgr -> RestoreMgr: DIDs restored: 3 ✓
+
+== 12. Restore Credentials ==
+
+RestoreMgr -> RestoreMgr: Extract credentials from backup
+
+loop For each credential in backup
+  RestoreMgr -> RestoreMgr: Parse credential data
+  
+  RestoreMgr -> CredStore: importCredential(credential)
+  activate CredStore
+  
+  CredStore -> CredStore: Validate credential structure
+  CredStore -> CredStore: Decrypt credential data\n(was encrypted in backup)
+  CredStore -> CredStore: Re-encrypt with new master key
+  
+  CredStore -> DBMgr: storeCredential(credential)
+  activate DBMgr
+  DBMgr -> DBMgr: INSERT INTO Credentials
+  DBMgr --> CredStore: Stored
+  deactivate DBMgr
+  
+  CredStore --> RestoreMgr: Credential imported ✓
+  deactivate CredStore
+  
+  RestoreMgr -> WelcomeUI: Progress: 40-70% (+1 credential)
+end
+
+RestoreMgr -> RestoreMgr: Credentials restored: 15 ✓
+
+== 13. Restore Connections ==
+
+RestoreMgr -> RestoreMgr: Extract connections from backup
+
+loop For each connection in backup
+  RestoreMgr -> RestoreMgr: Parse connection data
+  
+  RestoreMgr -> ConnStore: importConnection(connection)
+  activate ConnStore
+  
+  ConnStore -> ConnStore: Validate connection data
+  ConnStore -> ConnStore: Restore:\n- Their DID & DID doc\n- Our DID\n- Connection state
+  
+  ConnStore -> DBMgr: storeConnection(connection)
+  activate DBMgr
+  DBMgr -> DBMgr: INSERT INTO Connections
+  DBMgr --> ConnStore: Stored
+  deactivate DBMgr
+  
+  ConnStore --> RestoreMgr: Connection imported ✓
+  deactivate ConnStore
+  
+  RestoreMgr -> WelcomeUI: Progress: 75% (+1 connection)
+end
+
+RestoreMgr -> RestoreMgr: Connections restored: 8 ✓
+
+== 14. Restore Settings ==
+
+RestoreMgr -> RestoreMgr: Extract settings from backup
+
+RestoreMgr -> DBMgr: importSettings(settings)
+activate DBMgr
+
+DBMgr -> DBMgr: INSERT INTO Settings:\n- Theme\n- Language\n- Security preferences\n- Notification settings
+
+DBMgr --> RestoreMgr: Settings restored ✓
+deactivate DBMgr
+
+RestoreMgr -> WelcomeUI: Progress: 85%
+
+== 15. Restore Wallet Metadata ==
+
+RestoreMgr -> RestoreMgr: Extract wallet metadata
+
+RestoreMgr -> DBMgr: updateWalletMetadata(metadata)
+activate DBMgr
+
+DBMgr -> DBMgr: Store:\n- Wallet ID (from backup)\n- Original created date\n- Restored date: now\n- App version
+
+DBMgr --> RestoreMgr: Metadata updated ✓
+deactivate DBMgr
+
+== 16. Re-register with Mediator (NEW DEVICE) ==
+
+note right of RestoreMgr
+  **CRITICAL:**
+  This is a NEW device with NEW mediator inbox.
+  Need to re-register routing keys
+  and update service endpoints in DID documents.
+end note
+
+RestoreMgr -> Mediator: Connect to mediator
+activate Mediator
+Mediator --> RestoreMgr: Connected
+deactivate Mediator
+
+RestoreMgr -> Mediator: Send coordinate-mediation request
+activate Mediator
+
+Mediator -> Mediator: Create new routing inbox
+Mediator -> Mediator: Assign inbox ID
+
+Mediator --> RestoreMgr: Mediation grant + new inbox
+deactivate Mediator
+
+RestoreMgr -> RestoreMgr: Store mediator endpoint
+
+loop For each DID with mediator service
+  RestoreMgr -> DIDMgr: updateServiceEndpoint(did, new_mediator_endpoint)
+  activate DIDMgr
+  
+  DIDMgr -> DIDMgr: Update DID document:\nservice.serviceEndpoint = new_inbox
+  
+  DIDMgr -> DBMgr: updateDID(did, new_document)
+  activate DBMgr
+  DBMgr -> DBMgr: UPDATE DIDs
+  DBMgr --> DIDMgr: Updated
+  deactivate DBMgr
+  
+  DIDMgr --> RestoreMgr: Endpoint updated ✓
+  deactivate DIDMgr
+end
+
+RestoreMgr -> WelcomeUI: Progress: 90%
+
+== 17. Sync with Mediator (Get Queued Messages) ==
+
+RestoreMgr -> Mediator: Request message pickup (batch)
+activate Mediator
+
+Mediator -> Mediator: Check for queued messages\n(from old device registration)
+
+alt Messages queued
+  Mediator --> RestoreMgr: Queued messages (array)
+  
+  loop For each message
+    RestoreMgr -> RestoreMgr: Decrypt message
+    RestoreMgr -> RestoreMgr: Process message
+    RestoreMgr -> RestoreMgr: Update connection states
+  end
+else No messages
+  Mediator --> RestoreMgr: No messages
+end
+
+deactivate Mediator
+
+RestoreMgr -> WelcomeUI: Progress: 95%
+
+== 18. Verify Restoration ==
+
+RestoreMgr -> RestoreMgr: Run verification checks
+
+RestoreMgr -> DBMgr: Count records
+activate DBMgr
+DBMgr -> DBMgr: SELECT COUNT(*) FROM DIDs
+DBMgr -> DBMgr: SELECT COUNT(*) FROM Credentials
+DBMgr -> DBMgr: SELECT COUNT(*) FROM Connections
+DBMgr --> RestoreMgr: Counts: 3, 15, 8
+deactivate DBMgr
+
+RestoreMgr -> RestoreMgr: Compare with backup manifest
+
+note right of RestoreMgr
+  **Verification:**
+  Expected (from backup):
+  - DIDs: 3
+  - Credentials: 15
+  - Connections: 8
+  
+  Actual (restored):
+  - DIDs: 3 ✓
+  - Credentials: 15 ✓
+  - Connections: 8 ✓
+  
+  All match! ✓
+end note
+
+RestoreMgr -> DIDMgr: verifyDefaultDID()
+activate DIDMgr
+DIDMgr -> DIDMgr: Check default DID set
+DIDMgr --> RestoreMgr: Default DID: did:key:z6Mkf... ✓
+deactivate DIDMgr
+
+RestoreMgr -> KeyMgr: testCryptoOperations()
+activate KeyMgr
+KeyMgr -> KeyMgr: Test sign message
+KeyMgr -> KeyMgr: Test decrypt message
+KeyMgr --> RestoreMgr: All operations successful ✓
+deactivate KeyMgr
+
+RestoreMgr -> RestoreMgr: All verifications passed ✓
+
+== 19. Cleanup ==
+
+RestoreMgr -> RestoreMgr: Delete temporary backup file
+RestoreMgr -> RestoreMgr: Clear backup password from memory
+RestoreMgr -> RestoreMgr: Clear decryption key from memory
+RestoreMgr -> RestoreMgr: Clear plaintext data from memory
+
+RestoreMgr -> WelcomeUI: Progress: 100%
+
+RestoreMgr --> WelcomeUI: Restore complete!
+deactivate RestoreMgr
+
+== 20. Display Success & Navigate ==
+
+WelcomeUI -> User: ✓ Wallet Restored Successfully!\n\nRestored:\n✓ 3 DIDs\n✓ 15 Credentials\n✓ 8 Connections\n✓ All settings\n\nYour wallet is ready to use!
+
+note left of User
+  **Restoration Complete:**
+  
+  ✓ All data restored
+  ✓ Keys regenerated
+  ✓ Connections active
+  ✓ Credentials valid
+  ✓ Settings applied
+  
+  New device fully functional!
+  
+  Can now:
+  - Present credentials
+  - Receive new credentials
+  - Manage connections
+end note
+
+WelcomeUI -> User: Setup biometric (optional)?
+User -> WelcomeUI: Yes / Skip
+
+alt Biometric setup
+  WelcomeUI -> User: Authenticate with Face/Fingerprint
+  User -> WelcomeUI: Biometric enrolled ✓
+end
+
+WelcomeUI -> WelcomeUI: Navigate to HomeScreen
+deactivate WelcomeUI
+
+User -> User: Wallet fully restored on new device!
+
+note over User, Mediator
+  **Restoration Flow Complete!**
+  
+  **What happened:**
+  1. Downloaded encrypted backup from cloud
+  2. Decrypted with backup password
+  3. Restored all data (DIDs, credentials, connections)
+  4. Regenerated all cryptographic keys from seed
+  5. Re-registered with DIDComm mediator
+  6. Updated service endpoints
+  7. Synced queued messages
+  
+  **Key Points:**
+  - Backup password ≠ device PIN
+  - Seed used to regenerate all keys
+  - New device = new mediator registration
+  - Service endpoints updated
+  - Full functionality restored
+  
+  **User can now:**
+  - Use all credentials
+  - Present to verifiers
+  - Receive new credentials
+  - Communicate via DIDComm
+  
+  Seamless migration to new device!
+end note
+
+@enduml

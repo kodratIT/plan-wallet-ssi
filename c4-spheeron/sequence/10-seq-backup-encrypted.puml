@@ -1,0 +1,520 @@
+@startuml 10-seq-backup-encrypted
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Encrypted Wallet Backup Flow\n**Cloud Backup with Password Protection**
+
+actor "User" as User
+participant "Settings\nUI" as SettingsUI
+participant "Backup\nManager" as BackupMgr
+participant "Database\nManager" as DBMgr
+participant "Key\nManager" as KeyMgr
+participant "Encryption\nService" as EncryptSvc
+participant "Credential\nStore" as CredStore
+participant "Connection\nStore" as ConnStore
+participant "Cloud\nService\n(iCloud/Drive)" as Cloud
+
+== 1. Initiate Backup ==
+
+User -> SettingsUI: Navigate to Settings
+activate SettingsUI
+
+SettingsUI -> User: Display settings menu
+User -> SettingsUI: Select "Backup & Restore"
+
+SettingsUI -> User: Backup options:\n- Backup to cloud\n- Backup to file\n- Auto-backup settings
+
+User -> SettingsUI: Select "Backup to cloud"
+
+SettingsUI -> User: ⚠️ Create backup password\n\nThis is DIFFERENT from your PIN.\nNeeded to restore on new device.
+
+note left of User
+  **Backup Password vs PIN:**
+  - PIN: Unlocks app on THIS device
+  - Backup password: Decrypts backup
+    on ANY device
+  
+  Backup password must be:
+  - At least 12 characters
+  - Mix of upper, lower, numbers, symbols
+  - Memorable but strong
+end note
+
+== 2. Password Setup ==
+
+SettingsUI -> User: Enter backup password
+User -> SettingsUI: Input password (e.g., "MyS3cure!Backup@2024")
+
+SettingsUI -> SettingsUI: Validate password strength
+
+note right of SettingsUI
+  **Password Strength Check:**
+  ✓ Length >= 12 characters
+  ✓ Contains uppercase (M, S, B)
+  ✓ Contains lowercase (y, e, c, ...)
+  ✓ Contains numbers (3, 2, 0, 2, 4)
+  ✓ Contains symbols (!, @)
+  ✗ Not common password
+  ✗ Not sequential
+  
+  Strength: Strong ✓
+end note
+
+alt Weak password
+  SettingsUI -> User: Password too weak\nRequirements: 12+ chars, mixed case, etc.
+  User -> SettingsUI: Enter stronger password
+end
+
+SettingsUI -> User: Confirm backup password
+User -> SettingsUI: Re-enter password
+
+SettingsUI -> SettingsUI: Verify passwords match
+
+alt Passwords don't match
+  SettingsUI -> User: Passwords don't match
+  User -> SettingsUI: Re-enter confirmation
+end
+
+SettingsUI -> BackupMgr: createBackup(password)
+activate BackupMgr
+
+BackupMgr -> User: Creating backup...
+BackupMgr -> BackupMgr: Show progress indicator
+
+== 3. Derive Encryption Key from Password ==
+
+BackupMgr -> EncryptSvc: deriveKeyFromPassword(password)
+activate EncryptSvc
+
+EncryptSvc -> EncryptSvc: Generate random salt (16 bytes)
+
+note right of EncryptSvc
+  **Key Derivation (PBKDF2):**
+  - Algorithm: PBKDF2-HMAC-SHA256
+  - Iterations: 100,000 (OWASP recommended)
+  - Salt: 16 bytes random
+  - Output: 32 bytes (256-bit key)
+  
+  derived_key = PBKDF2(
+    password = user_password,
+    salt = random_salt,
+    iterations = 100000,
+    hash = SHA256,
+    key_length = 32
+  )
+  
+  Salt prevents rainbow table attacks
+  High iterations slow down brute force
+end note
+
+EncryptSvc -> EncryptSvc: Apply PBKDF2-HMAC-SHA256
+EncryptSvc -> EncryptSvc: 100,000 iterations
+EncryptSvc -> EncryptSvc: Output: 32-byte key
+
+EncryptSvc --> BackupMgr: Encryption key + salt
+deactivate EncryptSvc
+
+== 4. Collect Data to Backup ==
+
+BackupMgr -> BackupMgr: Initialize data collection
+
+BackupMgr -> KeyMgr: exportEncryptedSeed()
+activate KeyMgr
+note right of KeyMgr
+  **Export Encrypted Seed:**
+  Seed is already encrypted with PIN.
+  We export the encrypted version.
+  User needs PIN + backup password
+  to fully restore.
+end note
+KeyMgr -> KeyMgr: Get encrypted seed from Keystore
+KeyMgr --> BackupMgr: encrypted_seed + metadata
+deactivate KeyMgr
+
+BackupMgr -> BackupMgr: Update progress (10%)
+
+BackupMgr -> DBMgr: exportAllDIDs()
+activate DBMgr
+DBMgr -> DBMgr: SELECT * FROM DIDs
+DBMgr -> DBMgr: Include:\n- DID string\n- DID document\n- Key references\n- Default flag
+DBMgr --> BackupMgr: DIDs list (JSON)
+deactivate DBMgr
+
+BackupMgr -> BackupMgr: Update progress (25%)
+
+BackupMgr -> CredStore: exportAllCredentials()
+activate CredStore
+CredStore -> CredStore: SELECT * FROM Credentials
+CredStore -> CredStore: For each credential:\n- Credential JSON (already encrypted)\n- Metadata (type, issuer, dates)\n- Tags and favorites
+CredStore --> BackupMgr: Credentials list (JSON)
+deactivate CredStore
+
+BackupMgr -> BackupMgr: Update progress (50%)
+
+BackupMgr -> ConnStore: exportAllConnections()
+activate ConnStore
+ConnStore -> ConnStore: SELECT * FROM Connections
+ConnStore -> ConnStore: Include:\n- Connection IDs\n- DIDs (theirs and ours)\n- Connection state\n- Labels and metadata
+ConnStore --> BackupMgr: Connections list (JSON)
+deactivate ConnStore
+
+BackupMgr -> BackupMgr: Update progress (65%)
+
+alt Include message history (optional)
+  BackupMgr -> DBMgr: exportMessages()
+  activate DBMgr
+  DBMgr -> DBMgr: SELECT * FROM Messages\nLIMIT last 1000
+  DBMgr --> BackupMgr: Messages list
+  deactivate DBMgr
+end
+
+BackupMgr -> DBMgr: exportSettings()
+activate DBMgr
+DBMgr -> DBMgr: SELECT * FROM Settings
+DBMgr -> DBMgr: Include:\n- Theme, language\n- Security settings\n- Notification preferences
+DBMgr --> BackupMgr: Settings (JSON)
+deactivate DBMgr
+
+BackupMgr -> BackupMgr: Update progress (75%)
+
+BackupMgr -> DBMgr: exportMetadata()
+activate DBMgr
+DBMgr -> DBMgr: Get wallet metadata:\n- Wallet ID\n- Created date\n- App version\n- Last backup date
+DBMgr --> BackupMgr: Metadata (JSON)
+deactivate DBMgr
+
+BackupMgr -> BackupMgr: Calculate total data size
+
+== 5. Create Backup Bundle ==
+
+BackupMgr -> BackupMgr: Create backup bundle JSON
+
+note right of BackupMgr
+  **Backup Bundle Structure:**
+  {
+    "version": "1.0",
+    "wallet_id": "uuid",
+    "created_at": "2024-01-15T12:00:00Z",
+    "data": {
+      "seed": {
+        "encrypted_data": "...",
+        "salt": "...",
+        "iv": "..."
+      },
+      "dids": [{
+        "did": "did:key:z6Mkf...",
+        "document": {...},
+        "keys": [...],
+        "is_default": true
+      }],
+      "credentials": [{
+        "id": "...",
+        "type": "...",
+        "issuer": "...",
+        "data": "..."
+      }],
+      "connections": [{...}],
+      "messages": [{...}],
+      "settings": {...}
+    }
+  }
+end note
+
+BackupMgr -> BackupMgr: Serialize to JSON
+BackupMgr -> BackupMgr: Calculate data size: 2.4 MB
+
+BackupMgr -> BackupMgr: Create data manifest
+note right of BackupMgr
+  **Data Manifest:**
+  - DIDs count: 3
+  - Credentials count: 15
+  - Connections count: 8
+  - Messages count: 142
+  - Data size: 2.4 MB
+  - Checksum: SHA256 hash
+end note
+
+BackupMgr -> BackupMgr: Update progress (80%)
+
+== 6. Encrypt Backup Bundle ==
+
+BackupMgr -> EncryptSvc: encryptBackup(bundle, key)
+activate EncryptSvc
+
+EncryptSvc -> EncryptSvc: Generate random IV (12 bytes)
+
+note right of EncryptSvc
+  **AES-256-GCM Encryption:**
+  - Algorithm: AES-256-GCM
+  - Key: 32 bytes (from PBKDF2)
+  - IV: 12 bytes random (unique per backup)
+  - Tag: 16 bytes (authentication)
+  
+  Authenticated encryption:
+  - Encryption + integrity check
+  - Prevents tampering
+  - Detects corruption
+  
+  ciphertext || tag = AES256_GCM_Encrypt(
+    plaintext = bundle_json,
+    key = derived_key,
+    iv = random_iv
+  )
+end note
+
+EncryptSvc -> EncryptSvc: Encrypt with AES-256-GCM
+EncryptSvc -> EncryptSvc: Get authentication tag
+EncryptSvc -> EncryptSvc: Combine: ciphertext || tag
+
+EncryptSvc -> EncryptSvc: Calculate backup hash (SHA-256)
+
+EncryptSvc --> BackupMgr: Encrypted data + tag + hash
+deactivate EncryptSvc
+
+BackupMgr -> BackupMgr: Update progress (85%)
+
+== 7. Create Backup Metadata ==
+
+BackupMgr -> BackupMgr: Create backup metadata
+
+note right of BackupMgr
+  **Backup Metadata (Unencrypted):**
+  Stored alongside encrypted backup
+  Allows preview without decryption
+  
+  {
+    "format_version": "1.0",
+    "backup_date": "2024-01-15T12:00:00Z",
+    "wallet_id": "abc123...",
+    "data_version": "1.0",
+    "app_version": "2.1.0",
+    "encryption": {
+      "algorithm": "AES-256-GCM",
+      "kdf": "PBKDF2-HMAC-SHA256",
+      "kdf_iterations": 100000,
+      "salt": "base64_salt",
+      "iv": "base64_iv"
+    },
+    "manifest": {
+      "dids_count": 3,
+      "credentials_count": 15,
+      "connections_count": 8,
+      "data_size": 2485760
+    },
+    "checksum": "sha256_hash"
+  }
+end note
+
+BackupMgr -> BackupMgr: Package: encrypted_data + metadata
+
+== 8. Upload to Cloud ==
+
+BackupMgr -> Cloud: Authenticate to cloud service
+activate Cloud
+
+alt iOS
+  Cloud -> Cloud: Use iCloud API
+  Cloud -> Cloud: Authenticate with Apple ID
+else Android
+  Cloud -> Cloud: Use Google Drive API
+  Cloud -> Cloud: Authenticate with Google account
+end
+
+Cloud --> BackupMgr: Authentication successful
+deactivate Cloud
+
+BackupMgr -> Cloud: Check storage space available
+activate Cloud
+Cloud -> Cloud: Query quota
+Cloud --> BackupMgr: Available: 5 GB
+deactivate Cloud
+
+alt Insufficient space
+  BackupMgr -> SettingsUI: Not enough cloud storage
+  SettingsUI -> User: Error: Insufficient cloud storage
+  deactivate BackupMgr
+  deactivate SettingsUI
+  [<-- User
+end
+
+BackupMgr -> BackupMgr: Generate backup filename
+
+note right of BackupMgr
+  **Backup Filename:**
+  sphereon_backup_<date>_<wallet_id>.bak
+  
+  Example:
+  sphereon_backup_20240115_abc123.bak
+  
+  Metadata file:
+  sphereon_backup_20240115_abc123.meta.json
+end note
+
+BackupMgr -> Cloud: Create/check backup folder
+activate Cloud
+Cloud -> Cloud: Ensure "Sphereon Backups" folder exists
+Cloud --> BackupMgr: Folder ready
+deactivate Cloud
+
+BackupMgr -> Cloud: Upload encrypted backup file
+activate Cloud
+Cloud -> Cloud: Stream upload (chunked)
+BackupMgr -> SettingsUI: Update progress (85-95%)
+SettingsUI -> User: Uploading... 87%
+Cloud --> BackupMgr: Upload complete
+deactivate Cloud
+
+BackupMgr -> Cloud: Upload metadata file
+activate Cloud
+Cloud -> Cloud: Upload metadata JSON
+Cloud --> BackupMgr: Upload complete
+deactivate Cloud
+
+BackupMgr -> BackupMgr: Update progress (98%)
+
+== 9. Verify Backup ==
+
+BackupMgr -> Cloud: Download backup file (verify)
+activate Cloud
+Cloud --> BackupMgr: Downloaded file
+deactivate Cloud
+
+BackupMgr -> BackupMgr: Calculate hash of downloaded file
+BackupMgr -> BackupMgr: Compare with original hash
+
+alt Hash mismatch
+  BackupMgr -> SettingsUI: Backup verification failed
+  SettingsUI -> User: Error: Backup corrupted\nRetrying...
+  BackupMgr -> BackupMgr: Retry upload
+end
+
+BackupMgr -> BackupMgr: Hash matches ✓
+
+BackupMgr -> EncryptSvc: Test decrypt (with password)
+activate EncryptSvc
+EncryptSvc -> EncryptSvc: Attempt decryption
+EncryptSvc -> EncryptSvc: Verify authentication tag
+EncryptSvc --> BackupMgr: Decryption successful ✓
+deactivate EncryptSvc
+
+BackupMgr -> BackupMgr: Parse decrypted JSON
+BackupMgr -> BackupMgr: Validate structure
+
+alt Invalid structure
+  BackupMgr -> SettingsUI: Backup verification failed
+  SettingsUI -> User: Error: Backup corrupted
+  deactivate BackupMgr
+  deactivate SettingsUI
+  [<-- User
+end
+
+BackupMgr -> BackupMgr: All verifications passed ✓
+
+== 10. Store Backup Metadata Locally ==
+
+BackupMgr -> DBMgr: storeBackupRecord(metadata)
+activate DBMgr
+
+note right of DBMgr
+  **Local Backup Record:**
+  Tracks backup history
+  Enables "last backup" display
+  
+  {
+    "backup_id": "uuid",
+    "backup_date": "2024-01-15T12:00:00Z",
+    "location": "iCloud",
+    "file_name": "sphereon_backup_20240115_abc123.bak",
+    "data_size": 2485760,
+    "status": "verified",
+    "dids_count": 3,
+    "credentials_count": 15
+  }
+end note
+
+DBMgr -> DBMgr: INSERT INTO BackupHistory
+DBMgr -> DBMgr: Update Settings:\nlast_backup_date = now
+DBMgr --> BackupMgr: Record stored
+deactivate DBMgr
+
+== 11. Cleanup & Complete ==
+
+BackupMgr -> BackupMgr: Clear password from memory
+BackupMgr -> BackupMgr: Clear encryption key from memory
+BackupMgr -> BackupMgr: Clear plaintext data from memory
+BackupMgr -> BackupMgr: Delete temporary files
+
+note right of BackupMgr
+  **Security Cleanup:**
+  ✓ Zero out password buffer
+  ✓ Zero out encryption key
+  ✓ Clear plaintext JSON
+  ✓ Secure delete temp files
+  
+  Only encrypted backup remains
+end note
+
+BackupMgr -> BackupMgr: Update progress (100%)
+
+BackupMgr --> SettingsUI: Backup complete
+deactivate BackupMgr
+
+SettingsUI -> User: ✓ Backup Successful!\n\nBackup location: iCloud\nDate: 2024-01-15 12:00\nSize: 2.4 MB\n\n⚠️ IMPORTANT:\nRemember your backup password!\nWithout it, backup cannot be restored.
+
+note left of User
+  **Backup Complete:**
+  
+  What was backed up:
+  ✓ Encrypted seed
+  ✓ 3 DIDs
+  ✓ 15 Credentials
+  ✓ 8 Connections
+  ✓ All settings
+  
+  What's protected:
+  ✓ Password-protected (user password)
+  ✓ AES-256-GCM encrypted
+  ✓ Integrity-verified
+  ✓ Stored in cloud
+  
+  To restore:
+  - Install app on new device
+  - Select "Restore from backup"
+  - Enter backup password
+  - Also need device PIN
+end note
+
+SettingsUI -> User: Enable auto-backup?
+User -> SettingsUI: Yes / No
+
+alt Auto-backup enabled
+  SettingsUI -> SettingsUI: Schedule weekly auto-backup
+  SettingsUI -> User: Auto-backup every Sunday at 2 AM
+end
+
+SettingsUI -> User: Return to settings
+deactivate SettingsUI
+
+note over User, Cloud
+  **Backup Flow Complete!**
+  
+  **Key Security Features:**
+  1. Backup password separate from PIN
+  2. PBKDF2 key derivation (100k iterations)
+  3. AES-256-GCM authenticated encryption
+  4. Unique salt and IV per backup
+  5. Integrity verification
+  6. Zero-knowledge (cloud can't decrypt)
+  
+  **User can now:**
+  - Restore on new device
+  - Recover from lost/broken device
+  - Migrate to different phone
+  
+  **Important:**
+  Backup password must be remembered!
+  No password = no recovery
+end note
+
+@enduml

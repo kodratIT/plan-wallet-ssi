@@ -1,0 +1,172 @@
+@startuml BC Wallet - iOS Native Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram - Native iOS Implementation (Swift)
+
+Container_Boundary(presentation, "Presentation Layer (SwiftUI)") {
+    Component(app_entry, "BCWalletApp", "@main App", "App entry point and scene configuration")
+    
+    Component(views, "SwiftUI Views", "View", "UI screens (HomeView, CredentialsView, ProofsView)")
+    
+    Component(ui_components, "UI Components", "SwiftUI Components", "Reusable views (CardView, ButtonView, etc.)")
+    
+    Component(navigation_stack, "NavigationStack", "SwiftUI Navigation", "Screen routing and navigation")
+    
+    Component(theme_manager, "Theme Manager", "Theme", "Color scheme and typography")
+}
+
+Container_Boundary(viewmodel, "ViewModel Layer (MVVM + Combine)") {
+    Component(home_vm, "HomeViewModel", "ObservableObject", "Home screen state and logic")
+    
+    Component(credentials_vm, "CredentialsViewModel", "ObservableObject", "Credentials management")
+    
+    Component(proofs_vm, "ProofsViewModel", "ObservableObject", "Proofs presentation logic")
+    
+    Component(settings_vm, "SettingsViewModel", "ObservableObject", "App settings management")
+    
+    ComponentQueue(published_state, "@Published Properties", "Reactive State", "Observable state with Combine")
+}
+
+Container_Boundary(domain, "Domain Layer (Use Cases)") {
+    Component(get_creds_uc, "GetCredentialsUseCase", "Protocol", "Fetch and filter credentials")
+    
+    Component(accept_cred_uc, "AcceptCredentialUseCase", "Protocol", "Accept credential offer")
+    
+    Component(generate_proof_uc, "GenerateProofUseCase", "Protocol", "Generate ZK proof")
+    
+    Component(establish_conn_uc, "EstablishConnectionUseCase", "Protocol", "Create peer connection")
+}
+
+Container_Boundary(data, "Data Layer (Repository Pattern)") {
+    Component(cred_repo, "CredentialRepository", "Protocol + Impl", "Credential data source abstraction")
+    
+    Component(proof_repo, "ProofRepository", "Protocol + Impl", "Proof data source abstraction")
+    
+    Component(conn_repo, "ConnectionRepository", "Protocol + Impl", "Connection data source abstraction")
+    
+    Component(wallet_repo, "WalletRepository", "Protocol + Impl", "Wallet data access")
+}
+
+Container_Boundary(ssi_core, "SSI Core (Native Aries Implementation)") {
+    Component(conn_handler, "ConnectionProtocolHandler", "Swift Class", "Manual connection protocol implementation")
+    
+    Component(cred_handler, "CredentialProtocolHandler", "Swift Class", "Manual credential issuance protocol")
+    
+    Component(proof_handler, "ProofProtocolHandler", "Swift Class", "Manual proof presentation protocol")
+    
+    Component(didcomm_layer, "DIDComm Layer", "Encryption/Routing", "Message encryption and routing")
+    
+    Component(indy_wrapper, "IndyWrapper", "Swift Bridge", "Swift wrapper for Indy SDK (via Obj-C)")
+    
+    Component(askar_wrapper, "AskarWrapper", "Swift Bridge", "Swift wrapper for Aries Askar")
+    
+    Component(anoncreds_wrapper, "AnonCredsWrapper", "Swift Bridge", "Swift wrapper for AnonCreds")
+}
+
+Container_Boundary(storage, "Data Sources") {
+    ComponentDb(coredata, "Core Data", "SQLite", "Local credential and connection storage")
+    
+    Component(userdefaults, "UserDefaults", "iOS", "App preferences")
+    
+    Component(keychain, "Keychain Services", "iOS Security", "Secure key storage")
+}
+
+Container_Boundary(network, "Network Layer") {
+    Component(urlsession, "URLSession", "HTTP Client", "REST API client")
+    
+    Component(websocket, "WebSocket (Starscream)", "WebSocket", "Real-time messaging")
+    
+    Component(bcsc_oauth, "BCSC OAuth Client", "OAuth2", "BC Services Card integration")
+}
+
+Container_Boundary(native_services, "Native iOS Services") {
+    Component(local_auth, "LocalAuthentication", "iOS API", "Face ID / Touch ID")
+    
+    Component(avfoundation, "AVFoundation", "iOS Framework", "Camera and QR scanning")
+    
+    Component(background_tasks, "BackgroundTasks", "iOS Framework", "Background refresh")
+    
+    Component(user_notifications, "UserNotifications", "iOS Framework", "APNs push notifications")
+}
+
+Rel(app_entry, navigation_stack, "Sets up")
+Rel(navigation_stack, views, "Navigates to")
+Rel(views, ui_components, "Renders")
+Rel(views, home_vm, "Observes")
+Rel(views, credentials_vm, "Observes")
+Rel(views, proofs_vm, "Observes")
+
+Rel(home_vm, published_state, "Exposes state via")
+Rel(credentials_vm, published_state, "Exposes state via")
+Rel(proofs_vm, published_state, "Exposes state via")
+
+Rel(credentials_vm, get_creds_uc, "Calls")
+Rel(credentials_vm, accept_cred_uc, "Calls")
+Rel(proofs_vm, generate_proof_uc, "Calls")
+
+Rel(get_creds_uc, cred_repo, "Uses")
+Rel(accept_cred_uc, cred_repo, "Uses")
+Rel(generate_proof_uc, proof_repo, "Uses")
+Rel(establish_conn_uc, conn_repo, "Uses")
+
+Rel(cred_repo, cred_handler, "Delegates to")
+Rel(proof_repo, proof_handler, "Delegates to")
+Rel(conn_repo, conn_handler, "Delegates to")
+
+Rel(cred_handler, indy_wrapper, "Uses")
+Rel(cred_handler, anoncreds_wrapper, "Uses")
+Rel(proof_handler, anoncreds_wrapper, "Uses")
+Rel(conn_handler, didcomm_layer, "Uses")
+
+Rel(didcomm_layer, indy_wrapper, "Encryption")
+Rel(didcomm_layer, websocket, "Sends/receives")
+
+Rel(indy_wrapper, askar_wrapper, "Stores data")
+Rel(askar_wrapper, keychain, "Stores master key")
+
+Rel(cred_repo, coredata, "Queries")
+Rel(wallet_repo, userdefaults, "Reads/writes")
+
+Rel(cred_handler, urlsession, "API calls")
+Rel(bcsc_oauth, urlsession, "OAuth requests")
+
+Rel(local_auth, settings_vm, "Auth callback")
+Rel(avfoundation, views, "Scan QR")
+Rel(background_tasks, cred_handler, "Background sync")
+Rel(user_notifications, didcomm_layer, "Notification trigger")
+
+note right of indy_wrapper
+  Swift-Objective-C bridge
+  to Hyperledger Indy SDK
+  
+  Handles:
+  - Wallet operations
+  - Crypto (Ed25519, X25519)
+  - Ledger queries
+  
+  Uses Obj-C interop
+end note
+
+note right of cred_handler
+  Manual implementation
+  of Aries Issue Credential
+  Protocol 2.0 in Swift
+  
+  async/await syntax
+  Combine publishers
+end note
+
+note right of published_state
+  SwiftUI reactive updates
+  using @Published and
+  Combine framework
+  
+  Views auto-update
+  when state changes
+end note
+
+SHOW_LEGEND()
+
+@enduml

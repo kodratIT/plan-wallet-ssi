@@ -1,0 +1,735 @@
+@startuml 14-seq-ebsi-eudi
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title EBSI/EUDI Wallet - European Digital Identity Credential Flow\n**EU-Compliant Verifiable Diploma with Blockchain Timestamping**
+
+actor "Student\n(EU Citizen)" as Student
+participant "EUDI\nWallet\n(Sphereon)" as Wallet
+participant "University\nIssuer\nPortal" as UniPortal
+participant "eIDAS\nAuth\nProvider" as eIDAS
+participant "EBSI\nTrusted\nIssuers\nRegistry" as TIR
+participant "University\nOID4VCI\nServer" as UniOID4VCI
+participant "EBSI\nTimestamp\nService" as TimestampSvc
+participant "EBSI\nLedger\n(Blockchain)" as EBSILedger
+participant "DID\nResolver" as DIDResolver
+participant "Credential\nStore" as CredStore
+
+box "EBSI Infrastructure" #LightBlue
+  participant TIR
+  participant TimestampSvc
+  participant EBSILedger
+end box
+
+== 1. University Onboarding to EBSI (One-Time Setup) ==
+
+note over UniPortal, TIR
+  **Prerequisites (University Setup):**
+  
+  Before issuing credentials, university must:
+  1. Register with EBSI as Trusted Issuer
+  2. Complete accreditation process
+  3. Obtain EBSI-compliant DID
+  4. Register credential schemas
+  5. Set up Qualified Electronic Signature (QES)
+  
+  This is a one-time onboarding process.
+  For this flow, assume university is already registered.
+end note
+
+== 2. Student Authentication (eIDAS-Compliant) ==
+
+Student -> UniPortal: Access diploma request portal
+activate UniPortal
+
+UniPortal -> eIDAS: Redirect to eIDAS authentication
+activate eIDAS
+
+note right of eIDAS
+  **eIDAS Authentication:**
+  
+  EU regulation for electronic identification
+  and trust services
+  
+  Supported eID schemes:
+  • National eID cards (Germany, Estonia, etc.)
+  • Mobile ID (qualified level)
+  • Bank ID (in some countries)
+  • eIDAS node federation
+  
+  Level of Assurance: Substantial or High
+end note
+
+eIDAS -> Student: Show eID authentication
+activate Student
+
+note right of Student
+  **Student Uses National eID:**
+  
+  Example: German eID card
+  • Card reader or NFC phone
+  • PIN entry
+  • PKI certificate verification
+  
+  eIDAS Level: High
+end note
+
+Student -> eIDAS: Authenticate with national eID
+eIDAS -> eIDAS: Verify eID certificate
+eIDAS -> eIDAS: Check Level of Assurance (LoA)
+
+note right of eIDAS
+  **eIDAS LoA Verification:**
+  
+  LoA High confirmed:
+  ✓ Multi-factor authentication
+  ✓ In-person registration
+  ✓ PKI certificate
+  ✓ Hardware token (eID card)
+  
+  Meets EUDI Wallet ARF requirements
+end note
+
+eIDAS --> UniPortal: Authentication successful\n(eIDAS attributes)
+deactivate eIDAS
+
+note right of UniPortal
+  **eIDAS Attributes Received:**
+  
+  {
+    "sub": "DE/AT/123456789",
+    "familyName": "Mueller",
+    "givenName": "Anna",
+    "dateOfBirth": "1998-05-15",
+    "PersonIdentifier": "DEDE123456789",
+    "loA": "high"
+  }
+  
+  PID (Person Identification Data)
+  verified at eIDAS High level
+end note
+
+UniPortal -> UniPortal: Match student record
+UniPortal --> Student: Welcome, Anna Mueller
+deactivate Student
+
+== 3. Student Requests Diploma Credential ==
+
+Student -> UniPortal: Request diploma credential
+activate Student
+
+UniPortal -> UniPortal: Verify student eligibility
+
+note right of UniPortal
+  **Student Record Verification:**
+  
+  Student: Anna Mueller
+  ID: 123456789
+  Program: Computer Science (B.Sc.)
+  Graduation: 2023-07-31
+  Status: Graduated
+  GPA: 1.5 (German scale)
+  
+  ✓ Eligible for diploma credential
+end note
+
+UniPortal -> UniPortal: Prepare credential data
+deactivate Student
+
+== 4. Verify University is Trusted Issuer (EBSI TIR) ==
+
+UniPortal -> TIR: GET /trusted-issuers-registry/v4/issuers/{universityDID}
+activate TIR
+
+note right of TIR
+  **EBSI Trusted Issuers Registry:**
+  
+  Central registry of authorized credential issuers
+  in the EU
+  
+  Only registered entities can issue
+  EBSI/EUDI-compliant credentials
+  
+  Query: did:ebsi:zUniversityXYZ123
+end note
+
+TIR -> TIR: Query EBSI blockchain
+TIR -> TIR: Retrieve issuer record
+
+note right of TIR
+  **University Issuer Record:**
+  
+  {
+    "did": "did:ebsi:zUniversityXYZ123",
+    "name": "Technical University Munich",
+    "accreditation": {
+      "type": "Higher Education Institution",
+      "country": "DE",
+      "authority": "German Accreditation Council",
+      "validUntil": "2027-12-31"
+    },
+    "authorizedCredentials": [
+      "DiplomaCredential",
+      "TranscriptCredential"
+    ],
+    "status": "active"
+  }
+end note
+
+TIR --> UniPortal: Issuer authorized ✓
+deactivate TIR
+
+note right of UniPortal
+  **Trust Verification:**
+  
+  ✓ University is in EBSI Trusted Issuers Registry
+  ✓ Accreditation valid
+  ✓ Authorized to issue DiplomaCredential
+  
+  Can proceed with issuance
+end note
+
+== 5. Generate Credential Offer (OpenID4VCI) ==
+
+UniPortal -> UniOID4VCI: POST /credential-offers
+activate UniOID4VCI
+
+UniOID4VCI -> UniOID4VCI: Generate credential offer
+
+note right of UniOID4VCI
+  **OpenID4VCI Credential Offer:**
+  
+  EUDI Wallet ARF requires OpenID4VCI protocol
+  
+  Offer includes:
+  • Pre-authorized code (for this student)
+  • Credential type: DiplomaCredential
+  • EBSI schema reference
+  • University issuer DID
+  • Trust framework: EBSI
+end note
+
+UniOID4VCI --> UniPortal: Credential offer URL
+deactivate UniOID4VCI
+
+UniPortal -> UniPortal: Generate QR code
+
+UniPortal --> Student: Display diploma offer
+activate Student
+
+note right of Student
+  **University Portal Display:**
+  
+  ╔══════════════════════════════╗
+  ║  Your Diploma Credential     ║
+  ╠══════════════════════════════╣
+  ║                              ║
+  ║      [QR CODE]               ║
+  ║                              ║
+  ╠══════════════════════════════╣
+  ║ Scan with your EUDI Wallet   ║
+  ║ (EU Digital Identity Wallet) ║
+  ║                              ║
+  ║ Diploma: B.Sc. Computer Sci. ║
+  ║ Graduation: July 2023        ║
+  ╚══════════════════════════════╝
+end note
+
+Student -> Wallet: Scan QR code
+activate Wallet
+deactivate Student
+
+== 6. Wallet Processes Offer & Validates Issuer ==
+
+Wallet -> Wallet: Parse OpenID4VCI offer
+Wallet -> Wallet: Extract issuer DID
+
+Wallet -> DIDResolver: Resolve did:ebsi:zUniversityXYZ123
+activate DIDResolver
+
+DIDResolver -> EBSILedger: Query EBSI DID registry
+activate EBSILedger
+
+note right of EBSILedger
+  **EBSI DID Resolution:**
+  
+  EBSI maintains DID registry on blockchain
+  
+  Query: did:ebsi:zUniversityXYZ123
+  
+  Returns DID document with:
+  • Verification methods (signing keys)
+  • Service endpoints
+  • Controller information
+end note
+
+EBSILedger --> DIDResolver: DID document
+deactivate EBSILedger
+
+DIDResolver --> Wallet: University DID document
+deactivate DIDResolver
+
+Wallet -> TIR: Verify issuer in Trusted Issuers Registry
+activate TIR
+
+TIR -> TIR: Check issuer status
+
+TIR --> Wallet: Issuer verified & authorized ✓
+deactivate TIR
+
+note right of Wallet
+  **Trust Establishment:**
+  
+  ✓ University DID resolved from EBSI
+  ✓ Issuer in Trusted Issuers Registry
+  ✓ Accreditation valid
+  ✓ Authorized for DiplomaCredential
+  
+  High trust level (EBSI-backed)
+end note
+
+Wallet -> Student: Display credential offer
+activate Student
+
+note right of Wallet
+  **EUDI Wallet Display:**
+  
+  ╔══════════════════════════════════╗
+  ║ Diploma Credential Offer         ║
+  ╠══════════════════════════════════╣
+  ║ Issuer: Technical University     ║
+  ║         Munich 🔒                ║
+  ║                                  ║
+  ║ Status: EBSI Verified Issuer ✓   ║
+  ╠══════════════════════════════════╣
+  ║ Diploma Details:                 ║
+  ║ • Degree: Bachelor of Science    ║
+  ║ • Program: Computer Science      ║
+  ║ • Graduation: July 31, 2023      ║
+  ║ • Grade: 1.5 (very good)         ║
+  ║                                  ║
+  ║ Trust Framework: EBSI            ║
+  ║ Valid across EU member states    ║
+  ╠══════════════════════════════════╣
+  ║      [Accept]  [Decline]         ║
+  ╚══════════════════════════════════╝
+end note
+
+Student -> Wallet: Accept diploma
+deactivate Student
+
+== 7. Request Credential with Proof of Possession ==
+
+Wallet -> Wallet: Select holder DID
+Wallet -> Wallet: Generate PoP JWT
+
+note right of Wallet
+  **Proof of Possession:**
+  
+  Holder DID: did:ebsi:zStudentABC456
+  
+  PoP JWT proves student controls DID
+  Required by EUDI Wallet ARF
+end note
+
+Wallet -> UniOID4VCI: POST /credential (with PoP)
+activate UniOID4VCI
+
+UniOID4VCI -> UniOID4VCI: Validate PoP
+UniOID4VCI -> UniOID4VCI: Verify holder DID
+
+== 8. Generate Diploma Credential with QES ==
+
+UniOID4VCI -> UniOID4VCI: Create credential structure
+
+note right of UniOID4VCI
+  **Diploma Verifiable Credential:**
+  
+  {
+    "@context": [
+      "https://www.w3.org/2018/credentials/v1",
+      "https://api-pilot.ebsi.eu/trusted-schemas-registry/v2/schemas/..."
+    ],
+    "id": "urn:uuid:diploma-12345",
+    "type": [
+      "VerifiableCredential",
+      "VerifiableAttestation",
+      "DiplomaCredential"
+    ],
+    "issuer": "did:ebsi:zUniversityXYZ123",
+    "issuanceDate": "2024-01-15T16:00:00Z",
+    "expirationDate": null,
+    "credentialSubject": {
+      "id": "did:ebsi:zStudentABC456",
+      "givenName": "Anna",
+      "familyName": "Mueller",
+      "diplomaType": "Bachelor of Science",
+      "studyProgram": "Computer Science",
+      "graduationDate": "2023-07-31",
+      "grade": "1.5",
+      "gradeScheme": "German (1.0-5.0)",
+      "ECTS": 180,
+      "eqfLevel": 6
+    },
+    "credentialSchema": {
+      "id": "https://api-pilot.ebsi.eu/trusted-schemas-registry/v2/schemas/...",
+      "type": "FullJsonSchemaValidator2021"
+    },
+    "credentialStatus": {
+      "id": "https://ebsi.edu.eu/status/diploma-12345",
+      "type": "EbsiAccreditationEntry"
+    },
+    "evidence": [{
+      "type": "DocumentVerification",
+      "verifier": "did:ebsi:zUniversityXYZ123",
+      "evidenceDocument": "Transcript",
+      "documentPresence": "Physical"
+    }]
+  }
+end note
+
+UniOID4VCI -> UniOID4VCI: Sign with Qualified Electronic Signature (QES)
+
+note right of UniOID4VCI
+  **Qualified Electronic Signature:**
+  
+  eIDAS Regulation requires QES for
+  official diplomas to have legal effect
+  
+  QES Requirements:
+  ✓ Qualified Certificate (from Trust Service Provider)
+  ✓ Hardware Security Module (HSM)
+  ✓ Secure signature creation device
+  ✓ eIDAS-compliant TSP
+  
+  Algorithm: ES256 (ECDSA with P-256)
+  Certificate: X.509 Qualified Certificate
+  TSP: German Trust Service Provider
+  
+  JWS Header:
+  {
+    "alg": "ES256",
+    "typ": "JWT",
+    "x5c": ["<qualified_certificate_chain>"],
+    "kid": "did:ebsi:zUniversityXYZ123#qes-key-1"
+  }
+  
+  Signature has legal equivalence to
+  handwritten signature in EU
+end note
+
+UniOID4VCI -> UniOID4VCI: Convert to JWT format (W3C VC-JWT)
+
+== 9. Timestamp Credential on EBSI Blockchain ==
+
+UniOID4VCI -> TimestampSvc: POST /timestamp
+activate TimestampSvc
+
+note right of TimestampSvc
+  **EBSI Timestamp Service:**
+  
+  Creates tamper-proof timestamp
+  by anchoring credential hash
+  to EBSI blockchain
+  
+  Purpose:
+  • Proof of existence at specific time
+  • Immutable record
+  • Non-repudiation
+end note
+
+TimestampSvc -> TimestampSvc: Calculate credential hash
+
+note right of TimestampSvc
+  **Credential Hash:**
+  
+  Algorithm: SHA-256
+  Input: Complete credential JWT
+  Output: 32-byte hash
+  
+  Hash: 0x3f7a9c2e...
+end note
+
+TimestampSvc -> EBSILedger: Submit timestamp transaction
+activate EBSILedger
+
+note right of EBSILedger
+  **EBSI Ledger Transaction:**
+  
+  Transaction Type: Timestamp
+  Hash: 0x3f7a9c2e...
+  Issuer: did:ebsi:zUniversityXYZ123
+  Timestamp: 2024-01-15T16:01:30Z
+  
+  Stored on EBSI blockchain
+  (consortium blockchain - EU nodes)
+  
+  Block: #12345678
+  Transaction ID: 0xabc123...
+end note
+
+EBSILedger --> TimestampSvc: Transaction confirmed
+deactivate EBSILedger
+
+TimestampSvc -> TimestampSvc: Generate timestamp proof
+
+note right of TimestampSvc
+  **Timestamp Proof:**
+  
+  {
+    "type": "EbsiTimestamp2021",
+    "created": "2024-01-15T16:01:30Z",
+    "hash": "0x3f7a9c2e...",
+    "txId": "0xabc123...",
+    "blockNumber": 12345678,
+    "chainId": "ebsi-pilot"
+  }
+  
+  Proof that credential existed at this time
+  Cannot be backdated
+end note
+
+TimestampSvc --> UniOID4VCI: Timestamp proof
+deactivate TimestampSvc
+
+UniOID4VCI -> UniOID4VCI: Attach timestamp to credential
+
+note right of UniOID4VCI
+  **Final Credential with Timestamp:**
+  
+  The credential now includes:
+  1. Content (diploma data)
+  2. QES signature (legal validity)
+  3. EBSI timestamp (immutability proof)
+  
+  This combination provides:
+  • Legal effect (QES)
+  • Tamper evidence (blockchain)
+  • Non-repudiation (timestamp)
+end note
+
+== 10. Deliver Credential to Wallet ==
+
+UniOID4VCI --> Wallet: Credential issued
+deactivate UniOID4VCI
+
+note right of Wallet
+  **Credential Received:**
+  
+  JWT-VC with:
+  • Diploma data
+  • QES signature
+  • EBSI timestamp proof
+  
+  Format: W3C Verifiable Credential (JWT)
+  Compliance: EUDI Wallet ARF
+end note
+
+== 11. Wallet Validates Credential ==
+
+Wallet -> Wallet: Decode JWT
+Wallet -> Wallet: Extract QES certificate chain
+
+Wallet -> Wallet: Validate QES certificate
+
+note right of Wallet
+  **QES Certificate Validation:**
+  
+  1. Extract X.509 certificate from x5c header
+  2. Verify certificate chain to trusted root
+  3. Check certificate is Qualified (eIDAS)
+  4. Verify certificate not revoked (OCSP/CRL)
+  5. Check certificate validity period
+  6. Validate issuer matches university DID
+  
+  ✓ All checks passed
+  ✓ QES signature valid
+  ✓ Legal effect confirmed
+end note
+
+Wallet -> Wallet: Verify JWT signature
+Wallet -> Wallet: Validate credential schema
+
+Wallet -> EBSILedger: Verify timestamp
+activate EBSILedger
+
+EBSILedger -> EBSILedger: Query transaction
+
+note right of EBSILedger
+  **Timestamp Verification:**
+  
+  Query: Transaction 0xabc123...
+  
+  Result:
+  ✓ Transaction exists
+  ✓ Block confirmed
+  ✓ Hash matches credential
+  ✓ Timestamp valid
+  
+  Credential provably existed at
+  2024-01-15T16:01:30Z
+end note
+
+EBSILedger --> Wallet: Timestamp verified ✓
+deactivate EBSILedger
+
+Wallet -> Wallet: Validate all credential fields
+
+note right of Wallet
+  **Complete Validation:**
+  
+  ✓ QES signature valid (legal effect)
+  ✓ Issuer in EBSI Trusted Issuers Registry
+  ✓ DID resolved from EBSI
+  ✓ EBSI timestamp verified (blockchain)
+  ✓ Schema valid (EBSI schema registry)
+  ✓ Subject DID matches (holder)
+  ✓ Credential not expired
+  ✓ Revocation status checked
+  
+  Credential fully valid & compliant
+end note
+
+== 12. Store Credential ==
+
+Wallet -> CredStore: storeCredential(diploma)
+activate CredStore
+
+CredStore -> CredStore: Store credential with metadata
+
+note right of CredStore
+  **Stored Metadata:**
+  
+  Credential ID: diploma-12345
+  Type: DiplomaCredential
+  Issuer: Technical University Munich
+  Issued: 2024-01-15
+  Trust Framework: EBSI
+  Signature: QES (legal effect)
+  Blockchain: EBSI timestamped
+  
+  Special flags:
+  • EUDI-compliant ✓
+  • Cross-border valid ✓
+  • QES-signed ✓
+end note
+
+CredStore --> Wallet: Stored
+deactivate CredStore
+
+== 13. Display to Student ==
+
+Wallet -> Student: Diploma added to wallet!
+activate Student
+
+note right of Wallet
+  **EUDI Wallet Display:**
+  
+  ╔══════════════════════════════════╗
+  ║ ✓ Diploma Credential Added       ║
+  ╠══════════════════════════════════╣
+  ║                                  ║
+  ║  🎓 Bachelor of Science          ║
+  ║     Computer Science             ║
+  ║                                  ║
+  ║  Technical University Munich     ║
+  ║                                  ║
+  ║  Anna Mueller                    ║
+  ║  Graduated: July 31, 2023        ║
+  ║  Grade: 1.5 (very good)          ║
+  ║                                  ║
+  ║  🔒 QES-Signed (legal effect)    ║
+  ║  ⚓ EBSI Blockchain Timestamp     ║
+  ║  🇪🇺 Valid across EU              ║
+  ║                                  ║
+  ║  Trust Framework: EBSI           ║
+  ║                                  ║
+  ╠══════════════════════════════════╣
+  ║       [View Details]             ║
+  ╚══════════════════════════════════╝
+end note
+
+Student -> Wallet: View details
+deactivate Student
+deactivate Wallet
+
+== 14. Cross-Border Verification (Example Use) ==
+
+note over Student, EBSILedger
+  **Example: Student applies for job in France**
+  
+  French employer requests diploma proof:
+  
+  1. Wallet presents diploma credential
+  2. Verifier checks:
+     ✓ Issuer in EBSI Trusted Issuers Registry
+     ✓ QES signature valid (legal effect)
+     ✓ EBSI timestamp proves existence
+     ✓ Schema matches EBSI standard
+     ✓ Not revoked
+  
+  3. Diploma automatically recognized
+     (mutual recognition framework - EU)
+  
+  4. No need for manual verification or apostille
+  
+  Result: Instant, cryptographic verification
+  across EU borders
+end note
+
+== Summary ==
+
+note over Student, CredStore
+  **EBSI/EUDI Wallet Diploma Flow Complete**
+  
+  **Key Components:**
+  1. eIDAS High LoA authentication (national eID)
+  2. EBSI Trusted Issuers Registry verification
+  3. OpenID4VCI protocol (EUDI ARF compliant)
+  4. Qualified Electronic Signature (legal effect)
+  5. EBSI blockchain timestamping (immutability)
+  6. W3C Verifiable Credential format
+  7. Cross-border recognition (EU-wide)
+  
+  **Trust Framework:**
+  • EBSI Trusted Issuers Registry (authoritative)
+  • QES from eIDAS-qualified TSP (legal)
+  • Blockchain timestamp (tamper-proof)
+  • eIDAS High LoA (strong identity)
+  
+  **Legal Effect:**
+  QES signature gives diploma legal equivalence
+  to paper diploma with official signature/seal
+  across all EU member states
+  
+  **EUDI Wallet ARF Compliance:**
+  ✓ OpenID4VCI protocol
+  ✓ eIDAS authentication
+  ✓ EBSI trust framework
+  ✓ QES signatures
+  ✓ W3C VC format
+  ✓ Selective disclosure support
+  ✓ Revocation mechanisms
+  
+  **Benefits:**
+  • No apostille needed for cross-border use
+  • Instant cryptographic verification
+  • Tamper-proof (blockchain timestamp)
+  • Legal effect in all EU countries
+  • Portable (in student's wallet)
+  • Privacy-preserving presentations
+  
+  **Use Cases:**
+  • Job applications (any EU country)
+  • Further education enrollment
+  • Professional licensing
+  • Visa/immigration applications
+  • Credential verification services
+  
+  The EBSI infrastructure enables trusted,
+  cross-border credential exchange across
+  the European Union with legal validity.
+end note
+
+@enduml

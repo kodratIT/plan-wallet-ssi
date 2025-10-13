@@ -1,0 +1,180 @@
+@startuml Sphereon Wallet - System Context Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System Context Diagram for Sphereon Mobile Wallet\n[As the Wallet Creator: Complete SSI Ecosystem View]
+
+' =======================
+' ACTORS / PERSONAS
+' =======================
+
+Person(holder, "Credential Holder", "Individual who owns and manages their digital identity and verifiable credentials in the wallet")
+
+Person(issuer_admin, "Credential Issuer Administrator", "Organization representative who configures and issues verifiable credentials\n(University registrar, Government official, HR manager)")
+
+Person(verifier_admin, "Credential Verifier Administrator", "Service provider who configures verification policies and requests proofs\n(Employer, Bank, Age verification service)")
+
+Person(enterprise_admin, "Enterprise Administrator", "IT administrator managing organizational wallets and policies\n(Corporate IT, Government agency)")
+
+' =======================
+' CORE SYSTEM
+' =======================
+
+System(sphereon_wallet, "Sphereon Mobile Wallet", "Open-source Self-Sovereign Identity wallet for iOS and Android\n\nKey Features:\n• Store and manage Verifiable Credentials\n• Create and manage DIDs (6+ methods)\n• Present proofs with selective disclosure\n• OpenID4VCI/VP support\n• DIDComm v2 messaging\n• Enterprise integrations")
+
+' =======================
+' CREDENTIAL ISSUANCE SYSTEMS
+' =======================
+
+System_Ext(issuer_oid4vci, "Credential Issuer System\n(OID4VCI)", "OpenID for Verifiable Credential Issuance compliant platform\n\nCapabilities:\n• Credential metadata endpoint\n• Pre-authorized code flow\n• Authorization code flow (PKCE)\n• Batch credential issuance\n• Deferred credential support\n\nExamples: University degree system, Government ID, Employer badge")
+
+System_Ext(issuer_didcomm, "Credential Issuer System\n(DIDComm)", "DIDComm-based credential issuance using Aries protocols\n\nProtocols:\n• RFC 0453: Issue Credential v2\n• RFC 0037: Present Proof v2\n• RFC 0434: Out-of-Band\n\nExamples: Legacy Aries issuers, Hyperledger-based systems")
+
+' =======================
+' CREDENTIAL VERIFICATION SYSTEMS
+' =======================
+
+System_Ext(verifier_oid4vp, "Credential Verifier System\n(OID4VP)", "OpenID for Verifiable Presentations platform\n\nCapabilities:\n• Presentation Definition (PEx v2)\n• Direct post response mode\n• Redirect response mode\n• Cross-device flow support\n\nExamples: Employer verification, Bank KYC, Age check services")
+
+System_Ext(verifier_didcomm, "Credential Verifier System\n(DIDComm)", "DIDComm-based proof request system\n\nProtocols:\n• RFC 0037: Present Proof v2\n• Zero-knowledge predicates\n• Selective disclosure\n\nExamples: Enterprise verifiers, Government services")
+
+' =======================
+' SSI INFRASTRUCTURE
+' =======================
+
+System_Ext(mediator, "DIDComm Mediator Service", "Cloud-based message routing and offline delivery service\n\nProtocols:\n• RFC 0211: Coordinate Mediation\n• RFC 0212: Pickup Protocol\n• DIDComm v2 routing\n\nFeatures:\n• Message queueing\n• Multi-device support\n• Push notification triggers\n• High availability")
+
+System_Ext(universal_resolver, "Universal DID Resolver", "Multi-method DID resolution service\n\nSupported Methods:\n• did:key, did:jwk, did:web\n• did:ion (Bitcoin-anchored)\n• did:ethr (Ethereum)\n• did:ebsi (European Blockchain)\n• did:cheqd\n\nFallback resolution for all methods")
+
+System_Ext(blockchain_ledger, "Blockchain Ledger Network", "Distributed ledger storing public DIDs and schemas\n\nNetworks:\n• Sovrin Network (Hyperledger Indy)\n• ION Network (Bitcoin-anchored)\n• EBSI Network (EU blockchain)\n• Cheqd Network\n\nStored Data:\n• DID Documents\n• Credential Schemas\n• Credential Definitions\n• Revocation Registries")
+
+' =======================
+' ENTERPRISE SYSTEMS
+' =======================
+
+System_Ext(entra_vid, "Microsoft Entra Verified ID", "Enterprise identity verification platform\n\nCapabilities:\n• Azure AD integration\n• Corporate credential issuance\n• Enterprise policies\n• Verified ID Request API\n\nUse Cases:\n• Employee badges\n• Corporate certifications\n• Partner credentials")
+
+System_Ext(vdx_platform, "Sphereon VDX Platform", "Verifiable Data Exchange platform for enterprise workflows\n\nCapabilities:\n• B2B credential exchange\n• Workflow automation\n• Policy enforcement\n• Analytics and reporting\n\nUse Cases:\n• Supply chain verification\n• Business credentials\n• Multi-org workflows")
+
+System_Ext(ebsi_network, "EBSI Network", "European Blockchain Services Infrastructure\n\nCompliance:\n• EUDI Wallet requirements\n• eIDAS 2.0 regulation\n• Cross-border interoperability\n\nServices:\n• Trusted Issuers Registry\n• Trusted Verifiers Registry\n• Timestamp service")
+
+' =======================
+' SUPPORTING SERVICES
+' =======================
+
+System_Ext(oca_repository, "OCA Repository", "Overlay Capture Architecture bundle repository\n\nProvides:\n• Credential branding overlays\n• Label overlays (multi-language)\n• Format overlays\n• Character encoding overlays\n\nEnables beautiful credential rendering")
+
+System_Ext(push_services, "Push Notification Services", "Mobile push notification infrastructure\n\n• Firebase Cloud Messaging (Android)\n• Apple Push Notification Service (iOS)\n\nTriggers:\n• New credential offer\n• Proof request received\n• DIDComm message arrived")
+
+System_Ext(cloud_backup, "Cloud Backup Services", "Encrypted wallet backup storage\n\n• iCloud (iOS)\n• Google Drive (Android)\n\nFeatures:\n• End-to-end encryption\n• Zero-knowledge backup\n• Version management")
+
+System_Ext(app_stores, "App Distribution Platforms", "Mobile application distribution\n\n• Google Play Store (Android)\n• Apple App Store (iOS)\n\nDelivery:\n• App downloads\n• Automatic updates\n• Beta distribution")
+
+' =======================
+' RELATIONSHIPS - USER INTERACTIONS
+' =======================
+
+Rel(holder, sphereon_wallet, "Manages digital credentials and identity", "Mobile app (iOS/Android)")
+Rel(issuer_admin, issuer_oid4vci, "Configures credential schemas and issues credentials")
+Rel(issuer_admin, issuer_didcomm, "Manages Aries-based credential issuance")
+Rel(verifier_admin, verifier_oid4vp, "Configures verification policies and requirements")
+Rel(verifier_admin, verifier_didcomm, "Manages proof request workflows")
+Rel(enterprise_admin, entra_vid, "Manages enterprise credential policies")
+Rel(enterprise_admin, vdx_platform, "Configures B2B data exchange workflows")
+
+' =======================
+' RELATIONSHIPS - CREDENTIAL ISSUANCE
+' =======================
+
+Rel(sphereon_wallet, issuer_oid4vci, "Receives credential offers and requests credentials", "OpenID4VCI\nHTTPS + OAuth2\nQR code / Deep link")
+Rel(issuer_oid4vci, sphereon_wallet, "Issues verifiable credentials", "OpenID4VCI\nHTTPS\nJWT-VC / JSON-LD / SD-JWT")
+
+Rel(sphereon_wallet, issuer_didcomm, "Receives credential offers via DIDComm", "DIDComm v2\nHTTPS/WSS")
+Rel(issuer_didcomm, sphereon_wallet, "Issues credentials via Aries protocol", "RFC 0453\nDIDComm v2")
+
+' =======================
+' RELATIONSHIPS - CREDENTIAL VERIFICATION
+' =======================
+
+Rel(sphereon_wallet, verifier_oid4vp, "Submits verifiable presentations", "OpenID4VP\nHTTPS\nDirect Post / Redirect")
+Rel(verifier_oid4vp, sphereon_wallet, "Sends presentation requests with PEx definitions", "OpenID4VP\nQR code / Deep link\nPresentation Exchange v2")
+
+Rel(sphereon_wallet, verifier_didcomm, "Presents proofs via DIDComm", "RFC 0037\nDIDComm v2")
+Rel(verifier_didcomm, sphereon_wallet, "Requests proofs with predicates", "RFC 0037\nDIDComm v2")
+
+' =======================
+' RELATIONSHIPS - INFRASTRUCTURE
+' =======================
+
+Rel(sphereon_wallet, mediator, "Routes messages, picks up queued messages", "DIDComm v2\nRFC 0211, 0212\nHTTPS/WSS")
+Rel(issuer_didcomm, mediator, "Routes credential offers to holders", "DIDComm v2")
+Rel(verifier_didcomm, mediator, "Routes proof requests to holders", "DIDComm v2")
+Rel(mediator, push_services, "Triggers push notifications on new messages", "FCM/APNs API")
+
+Rel(sphereon_wallet, universal_resolver, "Resolves DIDs to DID Documents", "HTTPS\nDID Resolution spec")
+Rel(issuer_oid4vci, universal_resolver, "Resolves holder DIDs for validation")
+Rel(verifier_oid4vp, universal_resolver, "Resolves issuer and holder DIDs")
+
+Rel(sphereon_wallet, blockchain_ledger, "Reads schemas, credential definitions, revocation data", "HTTPS\nIndy API / ION API / EBSI API")
+Rel(issuer_oid4vci, blockchain_ledger, "Publishes schemas and credential definitions", "Blockchain write API")
+Rel(issuer_didcomm, blockchain_ledger, "Writes credential definitions and revocation registries")
+Rel(verifier_oid4vp, blockchain_ledger, "Reads public keys and schemas for verification")
+Rel(universal_resolver, blockchain_ledger, "Queries DID Documents from ledgers", "Blockchain read API")
+
+' =======================
+' RELATIONSHIPS - ENTERPRISE
+' =======================
+
+Rel(sphereon_wallet, entra_vid, "Receives/presents enterprise credentials", "Microsoft Entra API\nRequest API / Issuance API\nHTTPS + OAuth2")
+Rel(issuer_oid4vci, entra_vid, "Integrates for enterprise credential issuance", "Entra Integration")
+Rel(verifier_oid4vp, entra_vid, "Verifies enterprise credentials", "Entra Verification API")
+
+Rel(sphereon_wallet, vdx_platform, "Participates in B2B data exchange workflows", "VDX API\nHTTPS + API Key")
+Rel(issuer_oid4vci, vdx_platform, "Issues credentials via VDX workflows")
+Rel(verifier_oid4vp, vdx_platform, "Verifies credentials in VDX workflows")
+
+Rel(sphereon_wallet, ebsi_network, "EUDI Wallet compliance operations", "EBSI API\nTrusted Registry\nHTTPS")
+Rel(issuer_oid4vci, ebsi_network, "Registers as trusted issuer (EU)")
+Rel(verifier_oid4vp, ebsi_network, "Registers as trusted verifier (EU)")
+
+' =======================
+' RELATIONSHIPS - SUPPORTING SERVICES
+' =======================
+
+Rel(sphereon_wallet, oca_repository, "Fetches credential branding overlays", "HTTPS\nOCA Bundle download")
+Rel(issuer_oid4vci, oca_repository, "Publishes credential branding bundles")
+
+Rel(sphereon_wallet, push_services, "Receives notifications for new credentials/proofs", "FCM / APNs\nPush protocol")
+
+Rel(sphereon_wallet, cloud_backup, "Encrypted wallet backup and restore", "iCloud API / Google Drive API\nEnd-to-end encrypted")
+
+Rel(sphereon_wallet, app_stores, "Downloads app and updates", "HTTPS\nApp Store / Play Store")
+Rel(holder, app_stores, "Installs Sphereon Wallet")
+
+SHOW_LEGEND()
+
+note right of sphereon_wallet
+  **Sphereon Mobile Wallet**
+  Version: 1.0.0
+  Platforms: iOS 14+, Android 8.0+
+  
+  **Standards Compliance:**
+  • W3C DID Core 1.0
+  • W3C VC Data Model 1.1
+  • OpenID4VCI 1.0
+  • OpenID4VP 1.0
+  • SIOPv2
+  • DIDComm v2
+  • Presentation Exchange v2
+  • Aries RFCs (0160, 0453, 0037)
+  
+  **Key Differentiators:**
+  • Open-source (Apache 2.0)
+  • Multi-protocol support
+  • Enterprise-ready
+  • Privacy-preserving
+  • Self-sovereign
+end note
+
+@enduml

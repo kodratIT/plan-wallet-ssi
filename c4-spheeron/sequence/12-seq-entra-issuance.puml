@@ -1,0 +1,709 @@
+@startuml 12-seq-entra-issuance
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+title Microsoft Entra Verified ID - Credential Issuance\n**Enterprise SSI with Azure AD Integration**
+
+actor "Employee\n(Holder)" as Employee
+participant "Mobile\nWallet" as Wallet
+participant "Company\nHR Portal" as HRPortal
+participant "Azure AD\n(SSO)" as AzureAD
+participant "Entra\nRequest API" as EntraAPI
+participant "Entra\nIssuing\nService" as EntraIssuer
+participant "ION\nNetwork" as ION
+participant "DID\nResolver" as DIDResolver
+participant "Credential\nStore" as CredStore
+
+box "Microsoft Entra Verified ID Platform" #LightBlue
+  participant EntraAPI
+  participant EntraIssuer
+  participant ION
+end box
+
+== 1. Employee Authentication & Credential Request ==
+
+Employee -> HRPortal: Access HR portal
+activate HRPortal
+
+note right of HRPortal
+  **Company HR System:**
+  
+  Internal employee portal
+  powered by Azure AD authentication
+  
+  Features:
+  • Employee self-service
+  • Credential requests
+  • Profile management
+end note
+
+HRPortal -> AzureAD: Redirect to Azure AD login
+activate AzureAD
+
+AzureAD -> Employee: Show login page
+activate Employee
+
+note right of AzureAD
+  **Azure AD Authentication:**
+  
+  Company SSO (Single Sign-On)
+  
+  Login methods:
+  • Username + Password
+  • Windows Hello
+  • Microsoft Authenticator (MFA)
+  • FIDO2 security key
+end note
+
+Employee -> AzureAD: Enter credentials
+AzureAD -> AzureAD: Validate credentials
+
+AzureAD -> Employee: Require MFA
+Employee -> AzureAD: Complete MFA\n(push notification)
+
+note right of Employee
+  **Multi-Factor Authentication:**
+  
+  Microsoft Authenticator app
+  Push notification approved
+  
+  Security: MFA required for
+  credential issuance
+end note
+
+AzureAD -> AzureAD: MFA verified
+AzureAD -> AzureAD: Generate ID token + Access token
+
+AzureAD --> HRPortal: Authentication successful\n(tokens)
+deactivate AzureAD
+
+HRPortal -> HRPortal: Establish session
+HRPortal --> Employee: Welcome, [Employee Name]
+deactivate Employee
+
+HRPortal -> Employee: Display employee dashboard
+activate Employee
+
+note right of HRPortal
+  **Employee Dashboard:**
+  
+  Profile information:
+  • Name: John Doe
+  • Employee ID: E12345
+  • Department: Engineering
+  • Role: Senior Developer
+  • Start Date: Jan 1, 2020
+  
+  [Request Verifiable Credential]
+end note
+
+Employee -> HRPortal: Click "Request Employee ID Credential"
+deactivate Employee
+
+== 2. HR Admin Initiates Credential Issuance ==
+
+HRPortal -> HRPortal: Prepare credential data
+activate HRPortal
+
+note right of HRPortal
+  **Credential Data Collection:**
+  
+  From Azure AD:
+  • User Principal Name (UPN)
+  • Display Name
+  • Email
+  • Object ID
+  
+  From HR System:
+  • Employee ID
+  • Department
+  • Job Title
+  • Start Date
+  • Badge Number
+end note
+
+HRPortal -> HRPortal: Generate credential request
+
+== 3. Call Entra Request API ==
+
+HRPortal -> EntraAPI: POST /v1.0/verifiableCredentials/createIssuanceRequest
+activate EntraAPI
+
+note right of HRPortal
+  **Entra API Request:**
+  
+  POST https://verifiedid.did.msidentity.com/v1.0/
+       verifiableCredentials/createIssuanceRequest
+  
+  Authorization: Bearer <azure_ad_token>
+  Content-Type: application/json
+  
+  Body:
+  {
+    "includeQRCode": true,
+    "callback": {
+      "url": "https://hr.acme.com/callback",
+      "state": "unique_request_id_xyz",
+      "headers": {"api-key": "secret"}
+    },
+    "authority": "did:ion:EiDabcd...company_did",
+    "registration": {
+      "clientName": "Acme Corporation HR"
+    },
+    "type": "EmployeeIDCredential",
+    "manifest": "https://verifiedid.did.msidentity.com/
+                v1.0/tenants/.../manifests/EmployeeID",
+    "claims": {
+      "employeeId": "E12345",
+      "displayName": "John Doe",
+      "email": "john.doe@acme.com",
+      "department": "Engineering",
+      "jobTitle": "Senior Developer",
+      "startDate": "2020-01-01"
+    }
+  }
+end note
+
+EntraAPI -> EntraAPI: Validate request
+EntraAPI -> EntraAPI: Check API authorization
+EntraAPI -> EntraAPI: Validate authority DID
+EntraAPI -> EntraAPI: Validate manifest URL
+EntraAPI -> EntraAPI: Validate claims schema
+
+note right of EntraAPI
+  **Entra Validation:**
+  
+  ✓ API token valid (Azure AD)
+  ✓ Company DID authorized (did:ion)
+  ✓ Credential manifest valid
+  ✓ Claims match manifest schema
+  ✓ Callback URL registered
+  
+  All checks passed
+end note
+
+== 4. Generate Credential Offer ==
+
+EntraAPI -> EntraAPI: Generate issuance request ID
+EntraAPI -> EntraAPI: Create credential offer
+EntraAPI -> EntraAPI: Generate QR code data
+EntraAPI -> EntraAPI: Generate deep link
+
+note right of EntraAPI
+  **Credential Offer Generated:**
+  
+  Request ID: 12345-67890-abcde
+  
+  OpenID4VCI URL:
+  openid-vc://?request_uri=https://
+  verifiedid.did.msidentity.com/
+  v1.0/request/12345-67890-abcde
+  
+  Expiry: 10 minutes
+end note
+
+EntraAPI --> HRPortal: Issuance request created
+deactivate EntraAPI
+
+note right of HRPortal
+  **API Response:**
+  {
+    "requestId": "12345-67890-abcde",
+    "url": "openid-vc://?request_uri=...",
+    "expiry": 600,
+    "qrCode": "data:image/png;base64,...",
+    "pin": null
+  }
+end note
+
+HRPortal -> HRPortal: Store request ID
+HRPortal -> HRPortal: Render QR code
+
+== 5. Display QR Code to Employee ==
+
+HRPortal --> Employee: Display credential offer
+activate Employee
+
+note right of Employee
+  **HR Portal Display:**
+  
+  ╔══════════════════════════╗
+  ║  Employee ID Credential  ║
+  ╠══════════════════════════╣
+  ║                          ║
+  ║      [QR CODE HERE]      ║
+  ║                          ║
+  ╠══════════════════════════╣
+  ║ Scan with your           ║
+  ║ Sphereon Wallet app      ║
+  ║                          ║
+  ║ Or click to open:        ║
+  ║ [Open in Wallet]         ║
+  ╚══════════════════════════╝
+  
+  Expires in: 9:45
+end note
+
+Employee -> Wallet: Scan QR code
+activate Wallet
+deactivate Employee
+
+== 6. Wallet Processes Credential Offer ==
+
+Wallet -> Wallet: Parse OpenID4VCI URL
+Wallet -> Wallet: Extract request_uri
+
+Wallet -> EntraIssuer: GET request_uri
+activate EntraIssuer
+
+EntraIssuer -> EntraIssuer: Validate request ID
+EntraIssuer -> EntraIssuer: Check expiry (< 10 min)
+
+note right of EntraIssuer
+  **Request Validation:**
+  
+  Request ID: 12345-67890-abcde
+  Status: Pending
+  Expiry: Valid (2 minutes elapsed)
+  
+  Credential type: EmployeeIDCredential
+  Issuer: Acme Corporation
+  Issuer DID: did:ion:EiDabcd...
+end note
+
+EntraIssuer --> Wallet: Credential offer details
+deactivate EntraIssuer
+
+note right of Wallet
+  **Credential Offer:**
+  {
+    "credential_issuer": "https://verifiedid.did.msidentity.com",
+    "credentials": [{
+      "format": "jwt_vc_json",
+      "types": ["VerifiableCredential", "EmployeeIDCredential"],
+      "credentialSubject": {
+        "employeeId": "E12345",
+        "displayName": "John Doe",
+        "department": "Engineering",
+        ...
+      }
+    }],
+    "display": {
+      "name": "Acme Corporation",
+      "logo": "https://acme.com/logo.png",
+      "backgroundColor": "#000080"
+    }
+  }
+end note
+
+== 7. Wallet Resolves Company DID ==
+
+Wallet -> DIDResolver: Resolve did:ion:EiDabcd...
+activate DIDResolver
+
+DIDResolver -> ION: Query ION network
+activate ION
+
+note right of ION
+  **ION DID Resolution:**
+  
+  Company DID: did:ion:EiDabcd...
+  
+  ION network queries:
+  1. Check local cache
+  2. Query Bitcoin blockchain
+  3. Retrieve IPFS data
+  4. Reconstruct DID document
+end note
+
+ION -> ION: Query Bitcoin for anchor
+ION -> ION: Retrieve IPFS content (DID doc operations)
+ION -> ION: Apply operations to construct current state
+
+ION --> DIDResolver: DID document
+deactivate ION
+
+note right of DIDResolver
+  **Company DID Document:**
+  {
+    "id": "did:ion:EiDabcd...",
+    "verificationMethod": [{
+      "id": "did:ion:EiDabcd...#sign-key-1",
+      "type": "JsonWebKey2020",
+      "controller": "did:ion:EiDabcd...",
+      "publicKeyJwk": {...}
+    }],
+    "service": [{
+      "id": "#linkeddomains",
+      "type": "LinkedDomains",
+      "serviceEndpoint": "https://acme.com"
+    }]
+  }
+  
+  ✓ DID anchored on Bitcoin (via ION)
+  ✓ Signing key verified
+  ✓ Linked to acme.com domain
+end note
+
+DIDResolver --> Wallet: Company DID document
+deactivate DIDResolver
+
+Wallet -> Wallet: Validate company DID
+Wallet -> Wallet: Extract verification key
+Wallet -> Wallet: Verify domain linkage
+
+note right of Wallet
+  **Trust Establishment:**
+  
+  ✓ Company DID anchored on Bitcoin (ION)
+  ✓ DID linked to acme.com domain
+  ✓ Signing key identified
+  
+  Trust level: HIGH
+  (Bitcoin-anchored DID)
+end note
+
+== 8. Display Credential Preview to User ==
+
+Wallet -> Employee: Show credential preview
+activate Employee
+
+note right of Wallet
+  **Wallet Display:**
+  
+  ╔══════════════════════════════╗
+  ║ Credential Offer             ║
+  ╠══════════════════════════════╣
+  ║ Issuer: Acme Corporation 🔗  ║
+  ║ Type: Employee ID            ║
+  ╠══════════════════════════════╣
+  ║ Information to be stored:    ║
+  ║                              ║
+  ║ • Employee ID: E12345        ║
+  ║ • Name: John Doe             ║
+  ║ • Email: john.doe@acme.com   ║
+  ║ • Department: Engineering    ║
+  ║ • Job Title: Senior Dev      ║
+  ║ • Start Date: Jan 1, 2020    ║
+  ╠══════════════════════════════╣
+  ║ 🔒 Issuer Verified           ║
+  ║ ⚓ Bitcoin-anchored DID       ║
+  ╠══════════════════════════════╣
+  ║     [Accept]  [Reject]       ║
+  ╚══════════════════════════════╝
+end note
+
+Employee -> Wallet: Review credential details
+Employee -> Wallet: Accept credential
+deactivate Employee
+
+== 9. Wallet Requests Credential (with Proof of Possession) ==
+
+Wallet -> Wallet: Select/create holder DID
+Wallet -> Wallet: Generate key proof (PoP)
+
+note right of Wallet
+  **Proof of Possession:**
+  
+  Holder DID: did:ion:EiHolder123...
+  (Employee's personal DID)
+  
+  PoP JWT:
+  {
+    "iss": "did:ion:EiHolder123...",
+    "aud": "did:ion:EiDabcd...",
+    "nonce": "challenge_from_offer",
+    "iat": 1705329600
+  }
+  
+  Signed with holder's private key
+  Proves DID ownership
+end note
+
+Wallet -> EntraIssuer: POST /credential\n(with PoP JWT)
+activate EntraIssuer
+
+note right of Wallet
+  **Credential Request:**
+  
+  POST https://verifiedid.did.msidentity.com/
+       v1.0/request/12345-67890-abcde
+  
+  Body:
+  {
+    "id": "12345-67890-abcde",
+    "did": "did:ion:EiHolder123...",
+    "proof": {
+      "proof_type": "jwt",
+      "jwt": "<base64_encoded_pop_jwt>"
+    }
+  }
+end note
+
+EntraIssuer -> EntraIssuer: Validate request ID
+EntraIssuer -> EntraIssuer: Check not already issued
+
+EntraIssuer -> DIDResolver: Resolve holder DID
+activate DIDResolver
+
+DIDResolver -> ION: Query holder DID
+activate ION
+ION --> DIDResolver: Holder DID document
+deactivate ION
+
+DIDResolver --> EntraIssuer: Holder DID document
+deactivate DIDResolver
+
+EntraIssuer -> EntraIssuer: Verify PoP JWT signature
+EntraIssuer -> EntraIssuer: Validate proof claims
+
+note right of EntraIssuer
+  **PoP Validation:**
+  
+  ✓ Holder DID resolved successfully
+  ✓ PoP JWT signature valid
+  ✓ iss = Holder DID
+  ✓ aud = Company DID
+  ✓ Nonce matches offer
+  
+  Holder proven to control DID
+end note
+
+== 10. Entra Generates Verifiable Credential ==
+
+EntraIssuer -> EntraIssuer: Create VC structure
+
+note right of EntraIssuer
+  **Verifiable Credential:**
+  
+  {
+    "@context": [
+      "https://www.w3.org/2018/credentials/v1",
+      "https://schema.org"
+    ],
+    "type": ["VerifiableCredential", "EmployeeIDCredential"],
+    "issuer": "did:ion:EiDabcd...",
+    "issuanceDate": "2024-01-15T12:00:00Z",
+    "expirationDate": "2025-01-15T12:00:00Z",
+    "credentialSubject": {
+      "id": "did:ion:EiHolder123...",
+      "employeeId": "E12345",
+      "displayName": "John Doe",
+      "email": "john.doe@acme.com",
+      "department": "Engineering",
+      "jobTitle": "Senior Developer",
+      "startDate": "2020-01-01",
+      "employer": {
+        "name": "Acme Corporation",
+        "did": "did:ion:EiDabcd..."
+      }
+    }
+  }
+end note
+
+EntraIssuer -> EntraIssuer: Sign credential with company key
+EntraIssuer -> EntraIssuer: Convert to JWT format
+
+note right of EntraIssuer
+  **JWT-VC Signing:**
+  
+  Algorithm: ES256K (Secp256k1)
+  Key: Company's signing key
+  
+  JWT Header:
+  {
+    "typ": "JWT",
+    "alg": "ES256K",
+    "kid": "did:ion:EiDabcd...#sign-key-1"
+  }
+  
+  JWT Payload: (VC structure above)
+  
+  JWT Signature: 
+  ECDSA signature using company private key
+end note
+
+EntraIssuer -> EntraIssuer: Package credential
+
+== 11. Send Credential to Wallet ==
+
+EntraIssuer --> Wallet: Credential issued
+deactivate EntraIssuer
+
+note right of Wallet
+  **Credential Response:**
+  {
+    "credential": "<base64_jwt_vc>",
+    "format": "jwt_vc_json"
+  }
+end note
+
+== 12. Entra Callback to HR Portal ==
+
+EntraIssuer -> HRPortal: POST callback webhook
+activate HRPortal
+
+note right of HRPortal
+  **Callback Payload:**
+  
+  POST https://hr.acme.com/callback
+  Headers: api-key: secret
+  
+  {
+    "requestId": "12345-67890-abcde",
+    "requestStatus": "issuance_successful",
+    "state": "unique_request_id_xyz",
+    "subject": "did:ion:EiHolder123..."
+  }
+end note
+
+HRPortal -> HRPortal: Validate callback signature
+HRPortal -> HRPortal: Match state to employee session
+HRPortal -> HRPortal: Update issuance status
+
+HRPortal --> EntraIssuer: 200 OK
+deactivate HRPortal
+
+== 13. Wallet Validates & Stores Credential ==
+
+Wallet -> Wallet: Decode JWT-VC
+Wallet -> Wallet: Extract VC payload
+Wallet -> Wallet: Verify JWT signature
+
+note right of Wallet
+  **Credential Validation:**
+  
+  1. Decode JWT
+  2. Extract kid from header
+  3. Resolve issuer DID (already cached)
+  4. Get public key for kid
+  5. Verify ECDSA signature
+  
+  ✓ Signature valid
+  ✓ Issuer DID matches
+  ✓ Subject DID matches (holder)
+  ✓ Not expired
+  ✓ Issuance date valid
+end note
+
+Wallet -> Wallet: Validate credential schema
+Wallet -> Wallet: Check expiration date
+Wallet -> Wallet: Validate subject DID (matches holder)
+
+Wallet -> CredStore: storeCredential(vc)
+activate CredStore
+
+CredStore -> CredStore: Store credential JSON
+CredStore -> CredStore: Store metadata
+CredStore -> CredStore: Index by type & issuer
+
+CredStore --> Wallet: Stored
+deactivate CredStore
+
+note right of CredStore
+  **Storage:**
+  
+  Credential ID: cred_12345
+  Type: EmployeeIDCredential
+  Issuer: Acme Corporation
+  Issued: 2024-01-15
+  Expires: 2025-01-15
+  Status: Active
+  
+  Indexed for quick retrieval
+end note
+
+== 14. Display Success to User ==
+
+Wallet -> Employee: Credential received!
+activate Employee
+
+note right of Wallet
+  **Success Screen:**
+  
+  ╔══════════════════════════════╗
+  ║ ✓ Credential Added           ║
+  ╠══════════════════════════════╣
+  ║                              ║
+  ║  [ACME LOGO]                 ║
+  ║                              ║
+  ║  Employee ID                 ║
+  ║  Acme Corporation            ║
+  ║                              ║
+  ║  John Doe                    ║
+  ║  E12345                      ║
+  ║  Engineering                 ║
+  ║                              ║
+  ║  Valid until: Jan 15, 2025   ║
+  ║                              ║
+  ╠══════════════════════════════╣
+  ║        [View Details]        ║
+  ╚══════════════════════════════╝
+end note
+
+Employee -> Wallet: Done
+deactivate Employee
+deactivate Wallet
+
+== Summary ==
+
+note over Employee, CredStore
+  **Microsoft Entra Verified ID Issuance Complete**
+  
+  **Flow Summary:**
+  1. Employee authenticated with Azure AD + MFA
+  2. HR portal called Entra Request API
+  3. Entra generated credential offer (QR code)
+  4. Employee scanned QR with wallet
+  5. Wallet resolved company DID (did:ion on Bitcoin)
+  6. Employee accepted credential
+  7. Wallet proved DID ownership (PoP)
+  8. Entra issued signed credential (JWT-VC)
+  9. Wallet validated & stored credential
+  10. Entra notified HR portal via callback
+  
+  **Key Features:**
+  ✓ Azure AD SSO integration
+  ✓ Enterprise authentication (MFA required)
+  ✓ Bitcoin-anchored DIDs (ION network)
+  ✓ W3C Verifiable Credentials standard
+  ✓ Proof of Possession (key binding)
+  ✓ Webhook callbacks for workflow integration
+  ✓ Domain verification (LinkedDomains)
+  ✓ 1-year validity period
+  
+  **Trust Model:**
+  • Company DID anchored on Bitcoin (immutable)
+  • Domain linkage verified (did:ion ↔ acme.com)
+  • JWT signature cryptographically verified
+  • Employee DID also on ION (optional but recommended)
+  
+  **Enterprise Benefits:**
+  • Seamless Azure AD integration
+  • No custom identity infrastructure needed
+  • Microsoft manages DID operations (ION)
+  • Standards-compliant (W3C VC)
+  • Cross-platform wallet support
+  • Revocation support (Status List 2021)
+  
+  **Employee Benefits:**
+  • Portable digital employee ID
+  • Can be presented to any verifier
+  • Privacy-preserving (selective disclosure)
+  • Self-sovereign (in employee's wallet)
+  • Works offline (cached)
+  
+  **Use Cases:**
+  • Building access (present to door readers)
+  • Corporate app authentication
+  • HR systems (benefits, payroll)
+  • Third-party services (discounts, perks)
+  • Cross-company collaboration
+  
+  The employee can now use this credential
+  to prove their employment without involving
+  the company in each verification.
+end note
+
+@enduml
