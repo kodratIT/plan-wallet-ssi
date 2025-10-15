@@ -1,0 +1,249 @@
+@startuml
+title OCA (Overlay Capture Architecture) Rendering Flow (US-2.2)
+caption Beautiful Credential Card Rendering dengan OCA Overlays
+
+actor User
+participant "Credential\nCard UI" as UI
+participant "OCA\nRenderer\nService" as OCA
+participant "OCA\nRegistry" as Registry
+participant "Branding\nService" as Brand
+participant "Format\nService" as Format
+database "OCA\nCache" as Cache
+
+== 1. Credential Card Render Request ==
+User -> UI: View credentials
+activate UI
+
+UI -> UI: credentialCard.render()
+
+note right of UI
+Initial render with basic info:
+• Credential type
+• Issuer name
+• Issuance date
+end note
+
+== 2. Fetch OCA Bundle ==
+UI -> OCA: getOCABundle(credentialType, issuerDID)
+activate OCA
+
+OCA -> Cache: checkCache(credentialType)
+activate Cache
+
+alt Cache hit
+    Cache --> OCA: cached OCA bundle
+    note right of OCA
+    Cache includes:
+    • Capture base
+    • All overlays
+    • TTL metadata
+    end note
+else Cache miss
+    Cache --> OCA: not found
+    deactivate Cache
+    
+    OCA -> Registry: GET /oca/{credentialType}
+    activate Registry
+    
+    Registry -> Registry: Resolve OCA bundle
+    
+    note right of Registry
+    OCA Bundle structure:
+    {
+      "bundle": {
+        "capture_base": {...},
+        "overlays": {
+          "character_encoding": {...},
+          "format": {...},
+          "label": {...},
+          "information": {...},
+          "entry_code": {...},
+          "branding": {...}
+        }
+      }
+    }
+    end note
+    
+    Registry --> OCA: OCA bundle
+    deactivate Registry
+    
+    OCA -> Cache: cacheBundle(bundle, TTL=24h)
+    activate Cache
+    Cache --> OCA: cached
+    deactivate Cache
+end
+
+== 3. Apply Character Encoding Overlay ==
+OCA -> OCA: applyCharacterEncoding()
+
+note right of OCA
+Character Encoding Overlay:
+Maps attribute encodings
+{
+  "attribute_character_encoding": {
+    "name": "utf-8",
+    "description": "utf-8"
+  }
+}
+end note
+
+== 4. Apply Format Overlay ==
+OCA -> Format: applyFormatOverlay(credential, formatOverlay)
+activate Format
+
+note right of Format
+Format Overlay examples:
+• "dateOfBirth": "YYYY-MM-DD"
+• "amount": "0,0.00"
+• "percentage": "0.00%"
+• "phone": "+## (###) ###-####"
+end note
+
+Format -> Format: formatAttribute(value, pattern)
+
+Format --> OCA: formatted attributes
+deactivate Format
+
+== 5. Apply Label Overlay ==
+OCA -> OCA: applyLabelOverlay(language)
+
+note right of OCA
+Label Overlay (multilingual):
+{
+  "attribute_labels": {
+    "name": "Full Name",
+    "degree": "Degree Type",
+    "year": "Graduation Year"
+  },
+  "category_labels": {
+    "education": "Education"
+  }
+}
+end note
+
+OCA -> OCA: getLabelsForLanguage(locale)
+
+== 6. Apply Branding Overlay ==
+OCA -> Brand: applyBrandingOverlay(credential, brandingOverlay)
+activate Brand
+
+note right of Brand
+Branding Overlay:
+{
+  "logo": "https://issuer.com/logo.png",
+  "background_image": "url",
+  "background_color": "#003366",
+  "primary_color": "#FFFFFF",
+  "secondary_color": "#FFD700"
+}
+end note
+
+Brand -> Brand: downloadLogo(url)
+Brand -> Brand: applyColors(theme)
+Brand -> Brand: generateCardStyle()
+
+note right of Brand
+Card styling includes:
+• Background gradient/image
+• Text colors
+• Logo positioning
+• Border styling
+• Shadow effects
+end note
+
+Brand --> OCA: styled card props
+deactivate Brand
+
+== 7. Apply Information Overlay ==
+OCA -> OCA: applyInformationOverlay()
+
+note right of OCA
+Information Overlay:
+Provides help text and descriptions
+{
+  "attribute_information": {
+    "degree": "The academic degree awarded"
+  }
+}
+end note
+
+== 8. Generate Rendered Credential ==
+OCA -> OCA: generateRenderedCredential()
+
+note right of OCA
+Final rendered credential object:
+{
+  // Original credential
+  "credential": {...},
+  
+  // OCA styling
+  "style": {
+    "background": "#003366",
+    "primaryColor": "#FFFFFF",
+    "logo": "data:image/png;base64,..."
+  },
+  
+  // Formatted attributes
+  "attributes": [
+    {
+      "key": "name",
+      "label": "Full Name",
+      "value": "John Doe",
+      "format": "text",
+      "info": "..."
+    },
+    ...
+  ],
+  
+  // Layout hints
+  "layout": "professional_card"
+}
+end note
+
+OCA --> UI: rendered credential
+deactivate OCA
+
+== 9. Render Beautiful Card ==
+UI -> UI: renderCardWithOCA(renderedCredential)
+
+note right of UI
+Card rendering includes:
+1. Background styling
+2. Logo display (top-left)
+3. Credential type (header)
+4. Issuer name
+5. Formatted attributes
+6. Status badge
+7. Expiry indicator
+8. Actions menu
+end note
+
+UI -> UI: applyAnimations()
+
+note right of UI
+Animations:
+• Card flip (front/back)
+• Shimmer effect
+• Entrance animation
+• Hover effect (desktop)
+end note
+
+UI --> User: ✨ Beautiful credential card!
+
+== 10. Handle Fallback ==
+alt OCA bundle not available
+    UI -> UI: renderDefaultCard(credential)
+    
+    note right of UI
+    Default rendering:
+    • Plain white/gray background
+    • Basic text layout
+    • No logo
+    • Standard fonts
+    • Minimal styling
+    end note
+end
+
+deactivate UI
+
+@enduml
