@@ -1,0 +1,109 @@
+@startuml Sprint 1 - Security Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Sprint 1: Security Architecture - Component Diagram
+
+Person(user, "User", "Wallet user")
+
+System_Boundary(wallet, "Sphereon SSI Wallet") {
+    Container(ui_layer, "UI Layer", "React Native Components", "Security UI screens:\n- PIN Recovery UI\n- Biometric Prompt\n- Security Settings\n- Backup/Restore UI")
+    
+    Container(security_services, "Security Services", "TypeScript Services", "Core security services:\n- SecureStorage\n- PINRecovery\n- BiometricAuth\n- BackupService\n- AutoLock\n- AuditLogger")
+    
+    Container(crypto_layer, "Cryptography Layer", "expo-crypto, bip39", "Encryption services:\n- AES-256 encryption\n- Key derivation (Argon2)\n- Mnemonic generation\n- Hash functions")
+    
+    Container(state_management, "State Management", "React Context / Redux", "Security state:\n- Lock state\n- Auth state\n- Settings state")
+}
+
+System_Boundary(native_layer, "Native Layer") {
+    Container(secure_store, "Secure Store", "expo-secure-store", "Hardware-backed storage:\n- Keychain (iOS)\n- KeyStore (Android)")
+    
+    Container(biometric_api, "Biometric API", "expo-local-authentication", "Biometric authentication:\n- Face ID\n- Touch ID\n- Fingerprint")
+    
+    Container(file_system, "File System", "expo-file-system", "File operations:\n- Backup files\n- Encrypted storage")
+}
+
+System_Ext(cloud, "Cloud Storage", "iCloud / Google Drive")
+
+Rel(user, ui_layer, "Interacts with", "Touch/Gestures")
+
+Rel(ui_layer, security_services, "Calls", "TypeScript")
+Rel(ui_layer, state_management, "Updates/Reads", "State")
+
+Rel(security_services, crypto_layer, "Uses", "Encryption/Decryption")
+Rel(security_services, secure_store, "Store/Retrieve", "Secure data")
+Rel(security_services, biometric_api, "Authenticate", "Biometric")
+Rel(security_services, file_system, "Read/Write", "Files")
+
+Rel(security_services, state_management, "Updates", "Security state")
+
+Rel(file_system, cloud, "Sync", "Encrypted backups")
+
+note right of security_services
+  **Security Services (Sprint 1):**
+  
+  **SecureStorage.ts**
+  - Hardware-backed key storage
+  - Encrypted data storage
+  - Key rotation
+  - Secure deletion
+  
+  **PINRecovery.ts**
+  - Mnemonic generation (24 words)
+  - Recovery validation
+  - PIN derivation from seed
+  - Security questions
+  
+  **BiometricAuth.ts**
+  - Biometric availability check
+  - Authentication
+  - Biometric key generation
+  - Credential binding
+  
+  **BackupService.ts**
+  - Encrypted backup creation
+  - Backup export/import
+  - Cloud sync
+  - Backup verification
+  
+  **AutoLockService.ts**
+  - Timeout management
+  - Background detection
+  - Automatic locking
+  
+  **AuditLogger.ts**
+  - Security event logging
+  - Privacy-compliant logging
+end note
+
+note left of ui_layer
+  **UI Components:**
+  
+  - PINRecoverySetup
+  - PINRecoveryRestore
+  - BiometricPrompt
+  - BiometricSettings
+  - AutoLockSettings
+  - BackupScreen
+  - RestoreScreen
+  - SecurityDashboard
+  - SecuritySettings
+end note
+
+note bottom of secure_store
+  **Hardware Security:**
+  
+  iOS:
+  - Keychain Services
+  - Secure Enclave
+  - Hardware-backed keys
+  
+  Android:
+  - KeyStore System
+  - Trusted Execution Environment
+  - Hardware security module
+end note
+
+@enduml

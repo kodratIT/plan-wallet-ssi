@@ -1,0 +1,184 @@
+@startuml Sprint 1 - PIN Recovery Flow
+
+title Sprint 1: PIN Recovery Flow (US-1.1)
+
+participant "User" as user
+participant "PIN Recovery UI" as ui
+participant "PINRecoveryService" as service
+participant "SecureStorage" as storage
+participant "BIP39 Library" as bip39
+participant "Crypto" as crypto
+
+== Setup Recovery Phase ==
+
+user -> ui: Setup PIN Recovery
+activate ui
+
+ui -> user: Show explanation\n"Save recovery phrase\nsafely!"
+
+user -> ui: Click "Generate\nRecovery Phrase"
+
+ui -> service: generateRecoveryMnemonic(24)
+activate service
+
+service -> bip39: generateMnemonic(256)
+activate bip39
+bip39 --> service: 24-word mnemonic
+deactivate bip39
+
+service -> crypto: hash(mnemonic)
+activate crypto
+crypto --> service: mnemonic hash
+deactivate crypto
+
+service -> storage: setSecureItem(\n'MNEMONIC',\nencrypted_mnemonic)
+activate storage
+storage --> service: success
+deactivate storage
+
+service --> ui: mnemonic (24 words)
+deactivate service
+
+ui -> user: Display mnemonic\n⚠️ "Write this down!"
+
+user -> ui: Confirm written\ndown
+
+ui -> service: verifyMnemonic(user_input)
+activate service
+service -> bip39: validateMnemonic(user_input)
+bip39 --> service: valid
+service --> ui: verification result
+deactivate service
+
+ui -> user: ✅ Recovery\nsetup complete
+
+deactivate ui
+
+== Recovery Phase ==
+
+user -> ui: Forgot PIN,\nrecover it
+activate ui
+
+ui -> user: Show recovery screen\n"Enter 24-word phrase"
+
+user -> ui: Enter mnemonic\n(24 words)
+
+ui -> service: recoverPINWithMnemonic(mnemonic)
+activate service
+
+service -> bip39: validateMnemonic(mnemonic)
+activate bip39
+bip39 --> service: valid / invalid
+deactivate bip39
+
+alt Invalid Mnemonic
+    service --> ui: Error: Invalid phrase
+    ui -> user: ❌ "Invalid recovery\nphrase"
+else Valid Mnemonic
+    service -> storage: getSecureItem('MNEMONIC')
+    activate storage
+    storage --> service: stored_mnemonic
+    deactivate storage
+    
+    service -> service: compare mnemonic\nwith stored
+    
+    alt Mnemonic Matches
+        service -> bip39: mnemonicToSeedSync(mnemonic)
+        activate bip39
+        bip39 --> service: seed (Buffer)
+        deactivate bip39
+        
+        service -> crypto: digestStringAsync(\nSHA256, seed)
+        activate crypto
+        crypto --> service: hash
+        deactivate crypto
+        
+        service -> service: derivePINFromSeed(seed)\n(extract 6 digits)
+        
+        service --> ui: recovered_pin
+        deactivate service
+        
+        ui -> user: ✅ "PIN Recovered:\n123456"
+        
+        ui -> user: "Setup new PIN\nimmediately"
+        
+    else Mnemonic Does Not Match
+        service --> ui: Error: Wrong phrase
+        ui -> user: ❌ "Recovery phrase\ndoes not match"
+    end
+end
+
+deactivate ui
+
+== Security Questions Fallback (Optional) ==
+
+user -> ui: Use security\nquestions instead
+activate ui
+
+ui -> service: getSecurityQuestions()
+activate service
+service -> storage: getSecureItem(\n'security_questions')
+activate storage
+storage --> service: encrypted_questions
+deactivate storage
+service --> ui: questions
+deactivate service
+
+ui -> user: Display questions
+
+user -> ui: Enter answers
+
+ui -> service: verifySecurityQuestions(answers)
+activate service
+service -> service: compare answers\n(case-insensitive)
+service --> ui: verified / failed
+deactivate service
+
+alt Verified
+    ui -> service: recoverPIN()
+    activate service
+    service --> ui: recovered_pin
+    deactivate service
+    ui -> user: ✅ PIN recovered
+else Failed
+    ui -> user: ❌ "Incorrect answers"
+end
+
+deactivate ui
+
+note right of service
+  **Security Notes:**
+  
+  1. Mnemonic stored encrypted
+     in secure storage
+  
+  2. PIN derived deterministically
+     from seed
+  
+  3. No way to recover without
+     correct mnemonic or
+     security questions
+  
+  4. Rate limiting applied
+     (max 5 attempts)
+  
+  5. Audit log created for
+     recovery attempts
+end note
+
+note left of user
+  **User Guidelines:**
+  
+  ✅ DO:
+  - Write mnemonic on paper
+  - Store in safe place
+  - Verify before confirming
+  
+  ❌ DON'T:
+  - Screenshot mnemonic
+  - Email to yourself
+  - Store in cloud notes
+  - Share with anyone
+end note
+
+@enduml

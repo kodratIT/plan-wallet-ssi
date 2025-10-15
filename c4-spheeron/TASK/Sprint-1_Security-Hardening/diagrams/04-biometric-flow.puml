@@ -1,0 +1,179 @@
+@startuml Biometric Authentication Flow
+
+title Sprint 1: Biometric Authentication Flow (US-1.2)
+
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+actor User
+participant "BiometricUI" as UI
+participant "BiometricService" as Service
+participant "LocalAuthAPI" as Auth
+participant "SecureStorage" as Storage
+
+== Phase 1: Setup Biometric ==
+
+User -> UI: Enable biometric for credential
+activate UI
+
+UI -> Service: isAvailable()
+activate Service
+Service -> Auth: hasHardwareAsync()
+Auth --> Service: true
+Service -> Auth: isEnrolledAsync()
+Auth --> Service: true
+Service --> UI: available
+deactivate Service
+
+UI -> User: Show biometric type\n(Face ID / Touch ID / Fingerprint)
+
+User -> UI: Confirm enable
+
+UI -> Service: generateBiometricKey(credentialId)
+activate Service
+
+Service -> Auth: authenticateAsync("Bind credential")
+activate Auth
+
+alt Biometric Success
+    Auth -> User: Prompt biometric
+    User -> Auth: Provide biometric
+    Auth --> Service: success = true
+    
+    Service -> Service: Generate encryption key
+    
+    Service -> Storage: store(BIOMETRIC_KEY, key)
+    activate Storage
+    Storage --> Service: stored
+    deactivate Storage
+    
+    Service --> UI: key generated
+    deactivate Service
+    
+    UI -> UI: Encrypt credential with key
+    UI -> User: Success! Biometric enabled
+    
+else Biometric Failed
+    Auth --> Service: success = false
+    deactivate Auth
+    deactivate Service
+    UI -> User: Failed to enable biometric
+end
+
+deactivate UI
+
+== Phase 2: Authenticate with Biometric ==
+
+User -> UI: Access protected credential
+activate UI
+
+UI -> Service: authenticate("Access credential")
+activate Service
+
+Service -> Auth: authenticateAsync()
+activate Auth
+
+Auth -> User: Show biometric prompt
+
+alt Authentication Success
+    User -> Auth: Provide biometric
+    Auth --> Service: success = true
+    deactivate Auth
+    
+    Service -> Storage: get(BIOMETRIC_KEY)
+    activate Storage
+    Storage --> Service: key
+    deactivate Storage
+    
+    Service --> UI: authenticated + key
+    deactivate Service
+    
+    UI -> UI: Decrypt credential
+    UI -> User: Show credential data
+    
+else Authentication Failed
+    User -> Auth: Cancel or fail
+    Auth --> Service: success = false
+    deactivate Auth
+    Service --> UI: authentication failed
+    deactivate Service
+    
+    UI -> User: Show fallback option
+    
+    alt Use PIN Fallback
+        User -> UI: Choose PIN
+        UI -> User: Enter PIN
+        User -> UI: PIN entered
+        UI -> UI: Verify and decrypt with PIN
+        UI -> User: Show credential data
+    else Cancel
+        User -> UI: Cancel
+        UI -> User: Return to home
+    end
+end
+
+deactivate UI
+
+== Phase 3: Disable Biometric ==
+
+User -> UI: Disable biometric
+activate UI
+
+UI -> Service: authenticate("Disable biometric")
+activate Service
+Service -> Auth: authenticateAsync()
+Auth --> Service: success = true
+Service --> UI: authenticated
+deactivate Service
+
+UI -> Storage: delete(BIOMETRIC_KEY)
+activate Storage
+Storage --> UI: deleted
+deactivate Storage
+
+UI -> User: Biometric disabled
+
+deactivate UI
+
+note right of Service
+  Security Features:
+  * Hardware-backed keys
+  * Unique key per credential
+  * Secure Enclave (iOS) / TEE (Android)
+  * No biometric data stored
+  * Fallback to PIN available
+  * OS-level rate limiting
+end note
+
+note left of User
+  Supported Platforms:
+  
+  iOS:
+  * Face ID (iPhone X+)
+  * Touch ID (iPhone 5s+)
+  
+  Android:
+  * Fingerprint (API 23+)
+  * Face unlock (API 28+)
+  
+  All platforms:
+  * Hardware security
+  * Privacy preserved
+end note
+
+note over Auth
+  LocalAuthentication API
+  
+  Provides:
+  * Biometric availability check
+  * Authentication prompts
+  * Success/failure callbacks
+  * Fallback mechanisms
+  
+  Security:
+  * No raw biometric data exposed
+  * Hardware-backed verification
+  * OS manages biometric data
+end note
+
+@enduml

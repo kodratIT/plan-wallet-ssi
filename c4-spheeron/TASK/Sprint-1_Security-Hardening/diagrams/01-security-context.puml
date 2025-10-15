@@ -1,0 +1,77 @@
+@startuml Sprint 1 - Security Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Sprint 1: Security Context - Sphereon SSI Wallet
+
+Person(user, "Wallet User", "Pengguna yang menggunakan fitur keamanan wallet")
+
+System_Boundary(wallet_boundary, "Sphereon SSI Wallet - Security Layer") {
+    System(wallet_app, "Wallet Application", "React Native + Expo\n\nFitur Sprint 1:\n- PIN Recovery\n- Biometric Authentication\n- Secure Backup\n- Auto-Lock\n- Security Settings")
+}
+
+System_Ext(device_security, "Device Security", "Sistem keamanan perangkat:\n- Keychain (iOS)\n- KeyStore (Android)\n- Secure Enclave (iOS)\n- TEE (Android)")
+
+System_Ext(biometric_hardware, "Biometric Hardware", "Hardware biometrik:\n- Face ID sensor\n- Touch ID sensor\n- Fingerprint sensor")
+
+System_Ext(cloud_storage, "Cloud Storage", "Penyimpanan cloud:\n- iCloud (iOS)\n- Google Drive (Android)")
+
+System_Ext(file_system, "Device Storage", "Penyimpanan lokal:\n- Encrypted files\n- SQLite database")
+
+Rel(user, wallet_app, "Menggunakan", "Fitur keamanan")
+
+Rel(wallet_app, device_security, "Store secrets", "Native APIs\nKeychain/KeyStore")
+Rel(wallet_app, biometric_hardware, "Authenticate", "LocalAuthentication API")
+Rel(wallet_app, cloud_storage, "Backup wallet", "Cloud APIs\nEncrypted")
+Rel(wallet_app, file_system, "Store data", "FileSystem API\nEncrypted")
+
+Rel(device_security, biometric_hardware, "Verifies biometric", "Hardware-backed")
+
+note right of wallet_app
+  **Sprint 1 Security Features:**
+  
+  1. PIN Recovery (US-1.1)
+     - Mnemonic-based recovery
+     - Security questions
+  
+  2. Biometric Binding (US-1.2)
+     - Face ID / Touch ID
+     - Fingerprint
+     - Credential encryption
+  
+  3. Auto-Lock (US-1.3)
+     - Configurable timeout
+     - Background detection
+  
+  4. Secure Backup (US-1.4)
+     - AES-256 encryption
+     - Cloud sync
+  
+  5. Enhanced Security (US-1.7, US-1.8, US-1.9)
+     - Hardware-backed keys
+     - Rate limiting
+     - Audit logging
+end note
+
+note left of user
+  **User Actions:**
+  - Setup PIN recovery phrase
+  - Enable biometric authentication
+  - Configure auto-lock timeout
+  - Create encrypted backup
+  - View security settings
+  - Restore from backup
+end note
+
+note bottom of device_security
+  **Security Guarantees:**
+  - Hardware-backed encryption
+  - Secure key storage
+  - Data at rest encryption
+  - Data in transit encryption
+  - Biometric binding
+  - Secure deletion
+end note
+
+@enduml
