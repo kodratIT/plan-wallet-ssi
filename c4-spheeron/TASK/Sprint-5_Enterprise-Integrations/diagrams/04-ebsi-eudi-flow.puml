@@ -1,0 +1,138 @@
+@startuml
+title EBSI/EUDI Wallet Integration Flow (US-5.3)
+caption European Digital Identity Wallet Compliance
+
+actor User
+participant "Wallet" as Wallet
+participant "EBSI DID\nRegistry" as DIDReg
+participant "Trusted Issuers\nRegistry" as TIR
+participant "EBSI\nIssuer" as Issuer
+participant "Timestamp\nService" as Timestamp
+database "Wallet\nStorage" as Storage
+
+== Phase 1: DID Resolution ==
+Wallet -> DIDReg: GET /identifiers/did:ebsi:{id}
+activate DIDReg
+DIDReg -> DIDReg: Lookup DID Document
+DIDReg --> Wallet: DID Document
+deactivate DIDReg
+
+note right of DIDReg
+DID Document:
+{
+  "@context": [...],
+  "id": "did:ebsi:...",
+  "verificationMethod": [...],
+  "authentication": [...],
+  "assertionMethod": [...]
+}
+end note
+
+== Phase 2: Issuer Trust Verification ==
+Wallet -> TIR: GET /issuers/did:ebsi:{issuer}
+activate TIR
+TIR -> TIR: Check issuer registration
+TIR --> Wallet: Issuer metadata + Trust status
+deactivate TIR
+
+alt Issuer NOT trusted
+    Wallet -> User: ⚠️ Issuer not in EU trusted registry
+    User --> Wallet: Proceed anyway / Cancel
+end
+
+== Phase 3: Receive EBSI Credential ==
+Issuer -> Wallet: Issue VerifiableAttestation
+activate Wallet
+
+note right of Issuer
+EBSI Credential Format:
+{
+  "@context": [...],
+  "type": ["VerifiableAttestation"],
+  "issuer": "did:ebsi:...",
+  "issuanceDate": "2024-10-15T...",
+  "credentialSubject": {
+    "id": "did:ebsi:holder",
+    ...
+  },
+  "credentialSchema": {
+    "id": "https://api.ebsi.eu/...",
+    "type": "FullJsonSchemaValidator2021"
+  },
+  "proof": { ... }
+}
+end note
+
+Wallet -> Wallet: Validate credential format
+Wallet -> Wallet: Verify EBSI signature
+Wallet -> TIR: Verify issuer still trusted
+activate TIR
+TIR --> Wallet: Still trusted
+deactivate TIR
+
+== Phase 4: Timestamp Credential ==
+Wallet -> Timestamp: POST /timestamp
+activate Timestamp
+Timestamp -> Timestamp: Create blockchain record
+Timestamp --> Wallet: Timestamp proof
+deactivate Timestamp
+
+== Phase 5: EUDI Wallet Compliance Checks ==
+Wallet -> Wallet: Check ARF compliance
+note right of Wallet
+EUDI Wallet ARF Checks:
+✓ Secure storage
+✓ Biometric authentication
+✓ Encrypted communication
+✓ Audit logging
+✓ User consent management
+✓ Privacy by design
+✓ GDPR compliance
+end note
+
+Wallet -> Wallet: Validate security requirements
+Wallet -> Wallet: Check interoperability
+
+alt EUDI Compliant
+    Wallet -> Storage: Save credential
+    activate Storage
+    Storage --> Wallet: Saved as EUDI credential
+    deactivate Storage
+    Wallet -> User: ✅ EBSI credential received (EUDI compliant)
+else NOT Compliant
+    Wallet -> User: ❌ Compliance check failed
+end
+
+deactivate Wallet
+
+== Phase 6: Cross-Border Presentation ==
+User -> Wallet: Present to verifier (different EU country)
+Wallet -> DIDReg: Resolve verifier DID
+activate DIDReg
+DIDReg --> Wallet: Verifier DID Document
+deactivate DIDReg
+
+Wallet -> TIR: Verify verifier trust
+activate TIR
+TIR --> Wallet: Verifier trusted
+deactivate TIR
+
+Wallet -> User: Approve presentation?
+User --> Wallet: Approved
+
+Wallet -> Wallet: Create Verifiable Presentation
+Wallet -> Wallet: Sign with holder DID
+
+note right of Wallet
+Verifiable Presentation:
+{
+  "@context": [...],
+  "type": ["VerifiablePresentation"],
+  "holder": "did:ebsi:holder",
+  "verifiableCredential": [...]
+}
+end note
+
+Wallet -> User: ✅ Cross-border verification successful!
+
+@enduml

@@ -1,0 +1,94 @@
+@startuml
+title Microsoft Entra Verified ID Integration Flow (US-5.1)
+caption Complete Enterprise Credential Issuance via Azure
+
+actor User
+participant "Wallet" as Wallet
+participant "Azure AD" as AAD
+participant "Entra VID\nRequest API" as Entra
+participant "Enterprise\nIssuer" as Issuer
+database "Wallet\nStorage" as Storage
+
+== Phase 1: Authentication ==
+Wallet -> AAD: POST /oauth2/v2.0/token\n(client_credentials)
+activate AAD
+AAD -> AAD: Validate credentials
+AAD --> Wallet: Access token
+deactivate AAD
+
+== Phase 2: Request Credential Issuance ==
+User -> Wallet: Request employee badge
+Wallet -> Entra: POST /createIssuanceRequest\n+ Access Token\n+ Manifest URL\n+ Claims
+activate Entra
+
+note right of Entra
+Request Body:
+{
+  "includeQRCode": true,
+  "authority": "did:web:...",
+  "registration": {...},
+  "type": "VerifiableCredential",
+  "manifest": "https://.../manifest",
+  "claims": {
+    "employeeId": "E12345",
+    "name": "John Doe"
+  }
+}
+end note
+
+Entra -> Entra: Generate request
+Entra -> Entra: Create callback URL
+Entra --> Wallet: Issuance request + QR code
+deactivate Entra
+
+== Phase 3: Present QR to User ==
+Wallet -> User: Display QR code
+User -> Wallet: Scan QR (or deep link)
+
+== Phase 4: Credential Issuance ==
+Wallet -> Issuer: GET /credential-offer\n(via QR URL)
+activate Issuer
+Issuer -> Issuer: Validate request
+Issuer -> Entra: Verify issuance request
+activate Entra
+Entra --> Issuer: Valid
+deactivate Entra
+
+Issuer -> Issuer: Generate credential
+Issuer --> Wallet: Verifiable Credential (JWT)
+deactivate Issuer
+
+== Phase 5: Store Credential ==
+Wallet -> Wallet: Validate credential
+Wallet -> Storage: Save credential
+activate Storage
+Storage --> Wallet: Saved
+deactivate Storage
+
+Wallet -> Entra: Callback: Issuance complete
+activate Entra
+Entra --> Wallet: Acknowledged
+deactivate Entra
+
+Wallet -> User: ✅ Employee badge received!
+
+== Phase 6: Presentation Flow ==
+User -> Wallet: Present to verifier
+Wallet -> Entra: POST /createPresentationRequest\n+ Access Token
+activate Entra
+Entra --> Wallet: Presentation request
+deactivate Entra
+
+Wallet -> User: Approve presentation?
+User --> Wallet: Approved
+
+Wallet -> Entra: Submit presentation
+activate Entra
+Entra -> Entra: Verify credential
+Entra -> Entra: Verify holder
+Entra --> Wallet: Verification result
+deactivate Entra
+
+Wallet -> User: ✅ Credential verified!
+
+@enduml

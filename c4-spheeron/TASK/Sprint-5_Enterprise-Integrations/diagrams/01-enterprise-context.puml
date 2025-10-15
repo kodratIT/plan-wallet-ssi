@@ -1,0 +1,90 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title System Context Diagram - Enterprise Integrations (Sprint 5)
+caption Production-Ready Enterprise SSI Ecosystem
+
+LAYOUT_WITH_LEGEND()
+
+Person(user, "Enterprise User", "Employee/Citizen using\nenterprise credentials")
+
+System_Boundary(wallet, "Sphereon Mobile Wallet") {
+    System(enterprise, "Enterprise Integration Layer", "Integrates with:\n- Microsoft Entra\n- EBSI\n- Sphereon VDX")
+}
+
+' Microsoft Ecosystem
+System_Ext(azure_ad, "Azure Active Directory", "Enterprise identity\nprovider")
+System_Ext(entra_vid, "Microsoft Entra\nVerified ID", "Enterprise verifiable\ncredentials service")
+
+' European Ecosystem
+System_Ext(ebsi_registry, "EBSI DID Registry", "European blockchain\nDID registry")
+System_Ext(ebsi_issuers, "EBSI Trusted\nIssuers Registry", "EU trusted issuers")
+System_Ext(ebsi_timestamp, "EBSI Timestamp", "Blockchain timestamping")
+
+' Sphereon Ecosystem
+System_Ext(vdx_platform, "Sphereon VDX Platform", "B2B credential exchange\nand workflows")
+System_Ext(vdx_workflows, "VDX Workflow Engine", "Enterprise workflow\norchestration")
+
+' Enterprise Systems
+System_Ext(enterprise_issuer, "Enterprise Issuer", "Corporate HR/IT issuing\nemployee credentials")
+System_Ext(enterprise_verifier, "Enterprise Verifier", "Corporate systems\nverifying credentials")
+
+' Trust Framework
+System_Ext(trust_registry, "Trust Registry", "Well-Known DID Config\nStatusList2021")
+
+' User interactions
+Rel(user, enterprise, "Manages enterprise\ncredentials", "Mobile App")
+
+' Microsoft Entra flows
+Rel(enterprise, azure_ad, "Authenticates", "OAuth 2.0")
+Rel(enterprise, entra_vid, "Issues/Presents credentials", "Request API")
+Rel(entra_vid, azure_ad, "Validates identity", "OAuth 2.0")
+
+' EBSI flows
+Rel(enterprise, ebsi_registry, "Resolves did:ebsi", "HTTPS/REST")
+Rel(enterprise, ebsi_issuers, "Verifies issuer trust", "HTTPS/REST")
+Rel(enterprise, ebsi_timestamp, "Timestamps", "Blockchain")
+
+' VDX flows
+Rel(enterprise, vdx_platform, "Exchanges credentials", "REST API")
+Rel(enterprise, vdx_workflows, "Executes workflows", "REST API")
+Rel(vdx_platform, enterprise_issuer, "Coordinates issuance", "API")
+Rel(vdx_platform, enterprise_verifier, "Coordinates verification", "API")
+
+' Trust framework
+Rel(enterprise, trust_registry, "Checks trust & status", "HTTPS")
+
+SHOW_LEGEND()
+
+note right of enterprise
+**Sprint 5 Enterprise Features:**
+• Microsoft Entra VID integration
+• EBSI/EUDI Wallet compliance
+• Sphereon VDX Platform
+• Multi-tenant support
+• Organization profiles
+• Well-Known DID Config
+• StatusList2021 revocation
+• OpenID Connect SSO
+• Enterprise analytics
+end note
+
+note left of entra_vid
+**Microsoft Entra VID:**
+- Azure AD authentication
+- Request API for issuance
+- Request API for presentation
+- Enterprise credential types
+- Multi-tenant support
+end note
+
+note right of ebsi_registry
+**EBSI Ecosystem:**
+- did:ebsi DID method
+- Trusted Issuers Registry
+- Verifiable Attestations
+- EUDI Wallet compliance
+- Cross-border recognition
+end note
+
+@enduml
