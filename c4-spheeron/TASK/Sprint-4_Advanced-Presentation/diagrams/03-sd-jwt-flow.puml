@@ -1,0 +1,176 @@
+@startuml
+title SD-JWT Selective Disclosure Flow (US-4.1)
+caption Complete flow from credential reception to selective presentation
+
+actor User
+participant "Wallet UI" as UI
+participant "SD-JWT\nService" as SDJWT
+participant "Disclosure\nSelector" as Selector
+participant "Presentation\nService" as Present
+participant "Verifier" as Verifier
+database "Credential\nStore" as Store
+
+== Phase 1: Receive SD-JWT Credential ==
+User -> UI: Accept credential offer
+UI -> SDJWT: parseSDJWT(credential)
+activate SDJWT
+
+note right of SDJWT
+SD-JWT Structure:
+<JWT>~<Disclosure1>~<Disclosure2>~...~<KB-JWT>
+
+JWT: Issuer-signed claims
+Disclosures: Salted claim values
+KB-JWT: Key Binding (optional)
+end note
+
+SDJWT -> SDJWT: validateStructure()
+SDJWT -> SDJWT: verifyIssuerSignature()
+SDJWT -> SDJWT: extractDisclosures()
+
+SDJWT --> UI: Parsed SD-JWT
+deactivate SDJWT
+
+UI -> Store: saveCredential(sdJwt)
+activate Store
+Store --> UI: saved
+deactivate Store
+
+== Phase 2: Presentation Request ==
+Verifier -> UI: Presentation request\n+ Presentation Definition
+activate UI
+
+UI -> Present: processPresentationRequest(request)
+activate Present
+
+Present -> Present: parsePresentationDefinition()
+Present -> Store: findMatchingCredentials()
+activate Store
+Store --> Present: matching SD-JWT credentials
+deactivate Store
+
+Present --> UI: Required fields: [name, age, address]
+deactivate Present
+
+== Phase 3: Selective Disclosure ==
+UI -> Selector: showDisclosureSelector(credential, required)
+activate Selector
+
+note right of Selector
+Disclosure Options:
+☑ name (required)
+☑ age (required)
+☐ address (optional)
+☐ email (optional)
+☐ phone (optional)
+
+User can:
+• Select optional claims
+• View privacy impact
+• See what will be shared
+end note
+
+Selector --> User: Select claims to disclose
+
+User -> Selector: Select: [name, age]\nHide: [address, email, phone]
+
+Selector -> Selector: validateRequired()
+alt Required claims not selected
+    Selector --> User: ❌ Must select required claims
+    User -> Selector: Add required claims
+end
+
+Selector -> Selector: calculatePrivacyImpact()
+Selector --> User: Show preview:\n"You will share:\n✓ Name\n✓ Age\nVerifier will NOT see:\n✗ Address\n✗ Email\n✗ Phone"
+
+User -> Selector: Confirm disclosure
+Selector --> UI: Selected claims: [name, age]
+deactivate Selector
+
+== Phase 4: Generate Presentation ==
+UI -> SDJWT: createPresentation(credential, selected, verifier, nonce)
+activate SDJWT
+
+SDJWT -> SDJWT: filterDisclosures(selected)
+
+note right of SDJWT
+Only include disclosures for:
+• name
+• age
+
+Exclude disclosures for:
+• address
+• email  
+• phone
+end note
+
+SDJWT -> SDJWT: generateKeyBinding(holderDID, verifier, nonce)
+
+note right of SDJWT
+Key Binding JWT:
+{
+  "iat": timestamp,
+  "aud": verifierDID,
+  "nonce": nonce,
+  "sd_hash": hash(sd_jwt)
+}
+Signed by holder
+end note
+
+SDJWT -> SDJWT: assemblePresentation()
+
+note right of SDJWT
+Final SD-JWT Presentation:
+<JWT>~<Disclosure_name>~<Disclosure_age>~<KB-JWT>
+
+Only selected disclosures included
+end note
+
+SDJWT --> UI: SD-JWT Presentation
+deactivate SDJWT
+
+== Phase 5: Submit Presentation ==
+UI -> Present: submitPresentation(presentation, verifier)
+activate Present
+
+Present -> Verifier: POST /presentation\n+ SD-JWT Presentation
+activate Verifier
+
+Verifier -> Verifier: verifyIssuerSignature()
+Verifier -> Verifier: verifyKeyBinding(holderDID)
+Verifier -> Verifier: validateNonce()
+Verifier -> Verifier: extractRevealedClaims()
+
+note right of Verifier
+Verifier sees only:
+✓ name: "John Doe"
+✓ age: 30
+
+Verifier does NOT see:
+✗ address
+✗ email
+✗ phone
+end note
+
+Verifier --> Present: ✅ Presentation accepted
+deactivate Verifier
+
+Present --> UI: Success
+deactivate Present
+
+== Phase 6: Log Activity ==
+UI -> Store: logPresentationActivity({
+  credentialId,
+  verifier,
+  disclosed: [name, age],
+  timestamp
+})
+activate Store
+Store --> UI: logged
+deactivate Store
+
+UI --> User: ✅ "Credential shared successfully!\nShared: name, age\nPrivate: address, email, phone"
+
+deactivate UI
+
+@enduml

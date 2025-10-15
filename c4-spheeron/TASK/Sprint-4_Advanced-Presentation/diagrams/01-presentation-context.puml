@@ -1,0 +1,77 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title System Context Diagram - Advanced Presentation System (Sprint 4)
+caption Privacy-Preserving Credential Presentation with Selective Disclosure & ZKP
+
+LAYOUT_WITH_LEGEND()
+
+Person(user, "Wallet User", "Holder yang melakukan\nselective disclosure")
+
+System_Boundary(wallet, "Sphereon Mobile Wallet") {
+    System(presentation, "Advanced Presentation System", "Manages selective disclosure:\n- SD-JWT\n- BBS+ ZKP\n- Predicate Proofs\n- Consent Management")
+}
+
+System_Ext(verifier1, "Privacy-Aware Verifier", "Requests specific claims\nvia Presentation Exchange v2")
+System_Ext(verifier2, "Age Verification Service", "Requests age > 18\nvia predicate proof")
+System_Ext(verifier3, "Enterprise Verifier", "Requests credentials\nwith consent management")
+
+System_Ext(issuer_sdjwt, "SD-JWT Issuer", "Issues credentials with\nselective disclosure support")
+System_Ext(issuer_bbs, "BBS+ Issuer", "Issues credentials with\nBBS+ signatures for ZKP")
+
+System_Ext(pexRegistry, "Presentation Exchange Registry", "Provides presentation definitions")
+System_Ext(consentRegistry, "Consent Registry", "Stores consent preferences\n(optional)")
+
+' Credential Issuance
+Rel(issuer_sdjwt, presentation, "Issues SD-JWT credentials", "OID4VCI")
+Rel(issuer_bbs, presentation, "Issues BBS+ credentials", "OID4VCI/DIDComm")
+
+' User interactions
+Rel(user, presentation, "Manages presentations:\n- Select claims\n- Set consent\n- View history", "Mobile App")
+
+' Presentation Flows
+Rel(presentation, verifier1, "Presents selected claims\n(full disclosure)", "OID4VP")
+Rel(presentation, verifier2, "Presents predicate proof\n(age > 18 without revealing exact age)", "OID4VP + ZKP")
+Rel(presentation, verifier3, "Presents with consent\n(remembered preferences)", "OID4VP")
+
+' Registry interactions
+Rel(verifier1, pexRegistry, "Publishes presentation\nrequirements", "HTTPS")
+Rel(presentation, pexRegistry, "Fetches presentation definitions", "HTTPS")
+
+' Consent management
+Rel(presentation, consentRegistry, "Stores/retrieves consent", "HTTPS")
+
+SHOW_LEGEND()
+
+note right of presentation
+**Sprint 4 Focus:**
+• SD-JWT selective disclosure
+• BBS+ zero-knowledge proofs
+• Presentation Exchange v2
+• Advanced disclosure UI
+• Predicate proofs (age, range)
+• Consent management
+• Presentation history
+• Template system
+end note
+
+note left of verifier2
+**Predicate Proof Example:**
+Verifier asks: "Prove age > 18"
+
+Wallet proves without revealing:
+✓ User is over 18
+✗ Actual age (e.g., 30)
+
+Uses BBS+ ZKP technology
+end note
+
+note right of issuer_sdjwt
+**SD-JWT Benefits:**
+• Issuer signs once
+• Holder selectively discloses
+• Verifier sees only chosen claims
+• Cryptographically bound
+end note
+
+@enduml
