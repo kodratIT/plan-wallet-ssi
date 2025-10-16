@@ -1,31 +1,225 @@
-# Sprint 5: Enterprise Integrations - Complete Setup Guide
+# Sprint 5: Enterprise Integrations - Panduan Setup & Implementasi Lengkap (Part 1)
 
-## 📋 Overview
-Comprehensive implementation guide untuk Microsoft Entra VID, EBSI, dan Sphereon VDX Platform integration.
+## 📋 Ikhtisar
 
-## Prerequisites
-- Sprint 4 completed
-- Azure AD tenant access
-- EBSI pilot environment access
-- VDX Platform credentials
+Panduan implementasi LENGKAP dan DETAIL untuk Sprint 5: Integrasi dengan Microsoft Entra Verified ID, EBSI/EUDI Wallet, Sphereon VDX Platform, multi-profile management, trust infrastructure, dan enterprise analytics.
 
-## Step 1: Install Dependencies
+**Kompleksitas**: TINGGI - Enterprise integrations dengan multiple external platforms  
+**Estimasi Waktu**: 4 minggu (160 jam)  
+**Prasyarat**: Pemahaman kuat tentang enterprise SSI, OAuth2/OIDC, Azure AD
 
-### Core Libraries
+---
+
+## 🎯 Prasyarat
+
+Sebelum memulai Sprint 5, pastikan:
+- ✅ Sprint 4 selesai (Advanced Presentation ready)
+- ✅ Project berjalan tanpa error
+- ✅ **Azure AD Tenant** untuk Entra VID testing
+- ✅ **EBSI Pilot Access** untuk EBSI integration
+- ✅ **Sphereon VDX Credentials** untuk VDX Platform
+- ✅ Pemahaman OAuth2/OIDC flows
+- ✅ Git repository up to date
+
+---
+
+## 📦 Langkah 1: Install Dependencies (Detail)
+
+### 1.1 Install Microsoft Entra VID Libraries
+
 ```bash
-# Microsoft Entra
-npm install @azure/msal-node @azure/identity axios
+# Microsoft Authentication Library (MSAL)
+npm install @azure/msal-node
+npm install @azure/msal-react-native
+npm install @azure/identity
 
-# EBSI
-npm install @sphereon/did-provider-ebsi
-npm install @cef-ebsi/wallet-core @cef-ebsi/did-jwt
+# HTTP client
+npm install axios
 
-# Sphereon VDX
-npm install @sphereon/vdx-client @sphereon/ssi-sdk-vdx
+# JWT handling
+npm install jsonwebtoken
+npm install jose
 
-# Supporting
-npm install oidc-client-ts jose zod date-fns
+# Type definitions
+npm install --save-dev @types/jsonwebtoken
 ```
+
+### 1.2 Install EBSI Libraries
+
+```bash
+# EBSI Core
+npm install @cef-ebsi/wallet-core
+npm install @cef-ebsi/did-jwt
+npm install @cef-ebsi/siop-auth
+
+# Sphereon EBSI DID Provider
+npm install @sphereon/did-provider-ebsi
+npm install @sphereon/did-resolver-ebsi
+
+# EBSI Verifiable Credential
+npm install @sphereon/ssi-sdk-vc-handler-ebsi
+```
+
+### 1.3 Install Sphereon VDX Platform Libraries
+
+```bash
+# VDX Client
+npm install @sphereon/vdx-client
+npm install @sphereon/ssi-sdk-vdx
+
+# VDX Data Models
+npm install @sphereon/vdx-models
+
+# Workflow Management
+npm install @sphereon/workflow-engine-client
+```
+
+### 1.4 Install Supporting Libraries
+
+```bash
+# OpenID Connect
+npm install oidc-client-ts
+npm install react-native-app-auth
+
+# Well-Known DID Configuration
+npm install @decentralized-identity/did-configuration
+
+# Status List 2021
+npm install @transmute/vc-status-rl-2021
+
+# Enterprise Features
+npm install zod  # Schema validation
+npm install date-fns  # Date utilities
+npm install pako  # Compression (for status lists)
+
+# Analytics
+npm install victory-native  # Charts for React Native
+npm install @segment/analytics-react-native  # Optional: Segment analytics
+```
+
+### 1.5 Update Package.json
+
+```json
+{
+  "dependencies": {
+    "@azure/msal-node": "^2.0.0",
+    "@azure/msal-react-native": "^0.3.0",
+    "@azure/identity": "^4.0.0",
+    "@cef-ebsi/wallet-core": "^3.0.0",
+    "@cef-ebsi/did-jwt": "^3.0.0",
+    "@sphereon/did-provider-ebsi": "^0.6.0",
+    "@sphereon/vdx-client": "^1.0.0",
+    "@sphereon/ssi-sdk-vdx": "^0.9.0",
+    "@decentralized-identity/did-configuration": "^0.3.0",
+    "@transmute/vc-status-rl-2021": "^0.8.0",
+    "oidc-client-ts": "^2.4.0",
+    "react-native-app-auth": "^7.1.0",
+    "axios": "^1.6.0",
+    "jose": "^5.0.0",
+    "zod": "^3.22.0",
+    "date-fns": "^3.0.0",
+    "pako": "^2.1.0",
+    "victory-native": "^36.9.0"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/pako": "^2.0.0"
+  }
+}
+```
+
+### 1.6 Platform-Specific Setup
+
+#### iOS Setup
+```bash
+cd ios
+pod install
+cd ..
+```
+
+**Update Info.plist untuk OIDC:**
+```xml
+<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLSchemes</key>
+    <array>
+      <string>com.yourapp.wallet</string>
+    </array>
+  </dict>
+</array>
+```
+
+#### Android Setup
+
+**Update AndroidManifest.xml:**
+```xml
+<manifest>
+  <application>
+    <!-- OIDC Redirect -->
+    <activity
+      android:name="net.openid.appauth.RedirectUriReceiverActivity"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="com.yourapp.wallet" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
+```
+
+### 1.7 Verify Installation
+
+**File**: `scripts/verify-sprint5-deps.ts`
+
+```typescript
+#!/usr/bin/env ts-node
+
+async function verifyDependencies() {
+  console.log('Verifying Sprint 5 dependencies...\n');
+  
+  const deps = [
+    '@azure/msal-node',
+    '@cef-ebsi/wallet-core',
+    '@sphereon/vdx-client',
+    'oidc-client-ts',
+    '@transmute/vc-status-rl-2021',
+    'victory-native'
+  ];
+
+  let allInstalled = true;
+  
+  for (const dep of deps) {
+    try {
+      require(dep);
+      console.log(`✅ ${dep}`);
+    } catch (error) {
+      console.error(`❌ ${dep} - NOT INSTALLED`);
+      allInstalled = false;
+    }
+  }
+  
+  if (allInstalled) {
+    console.log('\n✅ All Sprint 5 dependencies verified!');
+  } else {
+    console.error('\n❌ Some dependencies missing. Run npm install.');
+    process.exit(1);
+  }
+}
+
+verifyDependencies();
+```
+
+Run verification:
+```bash
+chmod +x scripts/verify-sprint5-deps.ts
+npm run verify:sprint5
+```
+
+---
 
 ## Step 2: Microsoft Entra VID Integration (US-5.1)
 

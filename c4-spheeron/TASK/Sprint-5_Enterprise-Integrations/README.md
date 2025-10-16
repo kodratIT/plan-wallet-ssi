@@ -62,6 +62,16 @@ Setelah menyelesaikan Sprint 5:
 
 **Total Estimasi**: 48 jam
 
+**Implementation Notes**:
+- Service: `EntraVIDService.ts` - Complete Microsoft Entra VID integration
+- Library: `@azure/msal-node` untuk Azure AD authentication
+- API: Microsoft Request API untuk credential issuance/presentation
+- Features: Client credential flow, access token management, callback handling
+- Multi-tenant: Support untuk multiple Azure AD tenants
+- Manifest: Dynamic credential manifest URL support
+- QR Code: Integrated QR code generation untuk mobile issuance
+- Testing: Integration tests dengan Azure AD test tenant
+
 ---
 
 ### US-5.2: Integrasi Sphereon VDX Platform
@@ -91,6 +101,16 @@ Setelah menyelesaikan Sprint 5:
 - [ ] Dokumentasi integrasi (4 jam)
 
 **Total Estimasi**: 45 jam
+
+**Implementation Notes**:
+- Service: `VDXService.ts` - Complete Sphereon VDX Platform client
+- Library: `@sphereon/vdx-client` untuk VDX API integration
+- Features: Workflow execution, status tracking, policy enforcement
+- Workflows: Pre-defined credential issuance & verification workflows
+- Analytics: Built-in integration dengan VDX analytics engine
+- Policy: Dynamic policy rules dari VDX Platform
+- B2B: Support untuk business-to-business credential exchange
+- Testing: Integration tests dengan VDX sandbox environment
 
 ---
 
@@ -122,6 +142,17 @@ Setelah menyelesaikan Sprint 5:
 
 **Total Estimasi**: 50 jam
 
+**Implementation Notes**:
+- Service: `EBSIService.ts` - Complete EBSI integration
+- Library: `@cef-ebsi/wallet-core`, `@sphereon/did-provider-ebsi`
+- DID Method: did:ebsi resolver dengan EBSI DID Registry
+- Trusted Registry: Integration dengan EBSI Trusted Issuers Registry
+- EUDI Compliance: European Digital Identity Wallet ARF compliance
+- Revocation: EBSI-specific revocation status checking
+- Conformance: EBSI conformance testing dan validation
+- Legal: Support untuk eIDAS-compliant credentials
+- Testing: EBSI pilot environment integration tests
+
 ---
 
 ### US-5.4: Konfigurasi Enterprise Issuer/Verifier
@@ -150,6 +181,16 @@ Setelah menyelesaikan Sprint 5:
 
 **Total Estimasi**: 28 jam
 
+**Implementation Notes**:
+- Service: `EnterpriseConfigService.ts` - Enterprise configuration management
+- Features: Issuer/verifier registration, trust framework configuration
+- UI: Admin panel untuk enterprise configuration (`EnterpriseConfigScreen.tsx`)
+- Storage: Secure storage untuk issuer/verifier credentials
+- Trust Framework: Dynamic trust anchor configuration
+- Policy Engine: Rule-based policy enforcement engine
+- Multi-tenant: Tenant isolation dan configuration separation
+- API: REST API endpoints untuk remote configuration management
+
 ---
 
 ### US-5.5: Profile Wallet Organisasi
@@ -177,6 +218,17 @@ Setelah menyelesaikan Sprint 5:
 
 **Total Estimasi**: 22 jam
 
+**Implementation Notes**:
+- Service: `ProfileService.ts` - Multi-profile management
+- Component: `ProfileSwitcher.tsx` - Profile switching UI
+- Screen: `ProfileManagementScreen.tsx` - Profile CRUD operations
+- Features: Personal vs. work profiles, organization branding
+- Isolation: Complete data isolation antar profiles
+- Branding: Custom logo, colors, theme per organization
+- Storage: Profile-specific secure storage partitions
+- Switching: Seamless profile switching tanpa logout
+- Testing: Profile isolation tests, switching tests
+
 ---
 
 ### US-5.6: Well-Known DID Configuration
@@ -202,6 +254,17 @@ Setelah menyelesaikan Sprint 5:
 - [ ] Tulis tests (3 jam)
 
 **Total Estimasi**: 19 jam
+
+**Implementation Notes**:
+- Service: `WellKnownDIDService.ts` - DID Configuration resolution
+- Standard: W3C DID Configuration spec compliance
+- Fetch: HTTP client untuk `.well-known/did-configuration.json`
+- Validation: DID Configuration Resource validation
+- Domain Linkage: Cryptographic verification domain-DID linkage
+- UI: Trust indicator badges untuk verified domains
+- Caching: Domain configuration caching dengan TTL
+- Security: HTTPS enforcement untuk configuration fetch
+- Testing: Domain verification tests dengan test domains
 
 ---
 
@@ -232,6 +295,17 @@ Setelah menyelesaikan Sprint 5:
 
 **Total Estimasi**: 27 jam
 
+**Implementation Notes**:
+- Service: `StatusList2021Service.ts` - Credential status checking
+- Standard: W3C StatusList2021 specification
+- Bitstring: Efficient bitstring extraction dan parsing
+- Caching: Status list caching untuk performance
+- Background: Background sync untuk status updates
+- Compression: Gzip decompression untuk compact status lists
+- Batch: Batch status checking untuk multiple credentials
+- Privacy: Privacy-preserving status checking
+- Testing: Status list parsing tests, revocation tests
+
 ---
 
 ### US-5.8: Integrasi OpenID Connect
@@ -260,6 +334,17 @@ Setelah menyelesaikan Sprint 5:
 
 **Total Estimasi**: 26 jam
 
+**Implementation Notes**:
+- Service: `OIDCService.ts` - OpenID Connect client
+- Library: `oidc-client-ts` untuk OIDC flows
+- Flows: Authorization Code Flow dengan PKCE
+- Providers: Support untuk multiple OIDC providers (Google, Azure AD, Okta)
+- Dynamic: Dynamic client registration (RFC 7591)
+- Token Management: Access token, refresh token, ID token handling
+- UserInfo: OIDC UserInfo endpoint integration
+- Security: PKCE, state, nonce validation
+- Testing: OIDC flow tests dengan mock provider
+
 ---
 
 ### US-5.9: Analytics & Reporting Enterprise
@@ -287,6 +372,17 @@ Setelah menyelesaikan Sprint 5:
 - [ ] Tulis tests (3 jam)
 
 **Total Estimasi**: 25 jam
+
+**Implementation Notes**:
+- Service: `EnterpriseAnalyticsService.ts` - Analytics data collection
+- Dashboard: `AnalyticsDashboardScreen.tsx` - Enterprise metrics visualization
+- Metrics: Issuance metrics, presentation metrics, error tracking
+- Privacy: Privacy-preserving analytics (no PII collection)
+- Aggregation: Real-time data aggregation dan visualization
+- Export: CSV/JSON export untuk enterprise reporting
+- Library: Chart library untuk visualization (Victory Native)
+- Storage: Time-series data storage dengan AsyncStorage
+- Testing: Analytics collection tests, privacy compliance tests
 
 ---
 

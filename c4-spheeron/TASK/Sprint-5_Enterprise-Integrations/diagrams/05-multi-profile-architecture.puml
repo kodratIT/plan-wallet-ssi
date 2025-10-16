@@ -1,0 +1,79 @@
+@startuml Multi-Profile Wallet Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Multi-Profile Wallet Architecture - Data Isolation & Organization Branding
+
+Container_Boundary(app, "Wallet Application") {
+  Component(ui, "UI Layer", "React Native", "User interface dengan profile switching")
+  
+  Component(profileService, "Profile Service", "TypeScript", "Manages multiple profiles dan switching")
+  
+  Component(profileManager, "Profile Manager Component", "React", "Profile CRUD operations")
+  
+  Component(profileSwitcher, "Profile Switcher Component", "React", "Quick profile switching UI")
+  
+  Container_Boundary(personalProfile, "Personal Profile") {
+    Component(personalCreds, "Personal Credentials", "Storage", "Personal VCs")
+    Component(personalConns, "Personal Connections", "Storage", "Personal contacts")
+    Component(personalSettings, "Personal Settings", "Storage", "User preferences")
+  }
+  
+  Container_Boundary(workProfile, "Work Profile") {
+    Component(workCreds, "Work Credentials", "Storage", "Company VCs")
+    Component(workConns, "Work Connections", "Storage", "Business contacts")
+    Component(workSettings, "Work Settings", "Storage", "Company policies")
+    Component(orgBranding, "Organization Branding", "Config", "Logo, colors, theme")
+  }
+}
+
+System_Ext(orgSystem, "Organization System", "Company identity provider")
+
+' Relationships
+Rel(ui, profileSwitcher, "Displays", "React component")
+Rel(ui, profileManager, "Uses", "CRUD operations")
+Rel(profileSwitcher, profileService, "Switches profile", "async call")
+Rel(profileManager, profileService, "Manages profiles", "CRUD")
+
+Rel(profileService, personalProfile, "Loads data", "when personal active")
+Rel(profileService, workProfile, "Loads data", "when work active")
+
+Rel(workProfile, orgSystem, "Fetches branding", "HTTPS")
+Rel(orgBranding, workProfile, "Applied to", "profile context")
+
+note right of personalProfile
+  **Personal Profile**
+  - Personal credentials
+  - Personal connections
+  - No organization branding
+  - User-controlled settings
+  
+  Storage: profile_data_personal
+end note
+
+note right of workProfile
+  **Work Profile**
+  - Company credentials
+  - Business connections
+  - Organization branding applied
+  - Policy-enforced settings
+  
+  Storage: profile_data_work
+end note
+
+note bottom of profileService
+  **Profile Service Features:**
+  • Complete data isolation
+  • Seamless profile switching
+  • Organization branding per profile
+  • Profile-specific storage partitions
+  • Active profile state management
+  
+  **Security:**
+  • Separate encryption keys per profile
+  • Profile access control
+  • Audit logging per profile
+end note
+
+@enduml

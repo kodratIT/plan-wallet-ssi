@@ -1,0 +1,115 @@
+@startuml Sphereon VDX Platform Workflow
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Sequence.puml
+
+title Sphereon VDX Platform - B2B Credential Exchange Workflow
+
+Person(holder, "Employee", "Alice")
+System(holderWallet, "Holder Wallet", "Mobile App")
+System(vdxPlatform, "VDX Platform", "Sphereon B2B Exchange")
+System(employerSystem, "Employer System", "Company HR")
+System(verifierSystem, "Verifier System", "Background Check")
+
+== Credential Issuance via VDX ==
+
+Rel(employerSystem, vdxPlatform, "1. Initiate issuance workflow", "POST /workflows/execute")
+note right
+  {
+    "workflowId": "employment-credential-issuance",
+    "parameters": {
+      "employeeId": "EMP-12345",
+      "employeeName": "Alice Smith",
+      "position": "Senior Engineer",
+      "department": "Engineering",
+      "startDate": "2020-01-15"
+    }
+  }
+end note
+
+Rel(vdxPlatform, vdxPlatform, "2. Apply policy rules")
+note right
+  Policy Engine checks:
+  - Employment verification
+  - Data minimization rules
+  - Retention policies
+  - Consent requirements
+end note
+
+Rel(vdxPlatform, vdxPlatform, "3. Generate credential")
+note right
+  - Create Verifiable Credential
+  - Sign with company DID
+  - Apply VDX metadata
+  - Generate QR code/deeplink
+end note
+
+Rel(vdxPlatform, holderWallet, "4. Send credential offer", "DIDComm / Push / Email")
+Rel(holderWallet, holder, "5. Display offer notification")
+
+Rel(holder, holderWallet, "6. Review and accept offer")
+Rel(holderWallet, vdxPlatform, "7. Accept credential", "POST /credentials/accept")
+
+Rel(vdxPlatform, holderWallet, "8. Deliver credential", "Signed VC")
+Rel(holderWallet, holderWallet, "9. Store credential securely")
+
+Rel(vdxPlatform, employerSystem, "10. Report status", "Workflow complete")
+note left
+  {
+    "workflowId": "...",
+    "status": "completed",
+    "timestamp": "2024-10-16T10:00:00Z",
+    "credentialId": "vc-123456"
+  }
+end note
+
+== Analytics & Reporting ==
+
+Rel(vdxPlatform, vdxPlatform, "11. Log analytics")
+note right
+  Track:
+  - Issuance success
+  - Time to complete
+  - User acceptance rate
+  - Policy compliance
+end note
+
+== Credential Verification via VDX ==
+
+Rel(verifierSystem, vdxPlatform, "12. Initiate verification workflow", "POST /workflows/execute")
+note right
+  {
+    "workflowId": "employment-verification",
+    "parameters": {
+      "requiredClaims": ["employeeName", "position", "startDate"],
+      "purpose": "Background check"
+    }
+  }
+end note
+
+Rel(vdxPlatform, holderWallet, "13. Send presentation request", "DIDComm")
+Rel(holderWallet, holder, "14. Display verification request")
+
+Rel(holder, holderWallet, "15. Select credentials to share")
+Rel(holderWallet, vdxPlatform, "16. Submit presentation", "VP")
+
+Rel(vdxPlatform, vdxPlatform, "17. Verify presentation")
+note right
+  - Verify signatures
+  - Check issuer trust
+  - Validate against policies
+  - Check revocation status
+end note
+
+Rel(vdxPlatform, verifierSystem, "18. Return verification result")
+note left
+  {
+    "verified": true,
+    "claims": {
+      "employeeName": "Alice Smith",
+      "position": "Senior Engineer",
+      "startDate": "2020-01-15"
+    },
+    "trustScore": 95
+  }
+end note
+
+@enduml

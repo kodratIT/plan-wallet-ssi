@@ -1,0 +1,133 @@
+@startuml Trust Infrastructure Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Enterprise Trust Infrastructure - Domain Linkage & Revocation
+
+Container_Boundary(wallet, "Wallet Application") {
+  Component(credService, "Credential Service", "TypeScript", "Credential operations")
+  
+  Component(wellKnownService, "Well-Known DID Service", "TypeScript", "Domain linkage verification")
+  
+  Component(statusListService, "StatusList2021 Service", "TypeScript", "Revocation checking")
+  
+  Component(trustIndicator, "Trust Indicator UI", "React", "Visual trust badges")
+}
+
+System_Ext(issuerDomain, "Issuer Domain", "example.com")
+System_Ext(didConfigEndpoint, ".well-known Endpoint", "example.com/.well-known/did-configuration.json")
+System_Ext(statusListEndpoint, "Status List Endpoint", "example.com/status-list")
+System_Ext(ebsiRegistry, "EBSI Trusted Registry", "EU trusted issuers")
+
+' Credential Flow
+Rel(credService, wellKnownService, "Verify issuer domain", "async")
+Rel(credService, statusListService, "Check revocation", "async")
+
+' Well-Known DID Configuration Flow
+Rel(wellKnownService, didConfigEndpoint, "1. Fetch configuration", "HTTPS GET")
+note right
+  GET https://example.com/.well-known/did-configuration.json
+  
+  Response:
+  {
+    "@context": "https://identity.foundation/.well-known/did-configuration/v1",
+    "linked_dids": [
+      {
+        "did": "did:web:example.com",
+        "jwt": "eyJ..."
+      }
+    ]
+  }
+end note
+
+Rel(wellKnownService, wellKnownService, "2. Validate structure")
+Rel(wellKnownService, wellKnownService, "3. Verify JWT signature")
+note right
+  JWT Claims:
+  - iss: did:web:example.com
+  - sub: did:web:example.com
+  - vc.credentialSubject.id: did:web:example.com
+  - vc.credentialSubject.origin: https://example.com
+end note
+
+Rel(wellKnownService, trustIndicator, "4. Show trust badge", "if verified")
+
+' StatusList2021 Flow
+Rel(statusListService, statusListEndpoint, "1. Fetch status list", "HTTPS GET")
+note right
+  GET https://example.com/status-list/1
+  
+  Response (StatusList2021 Credential):
+  {
+    "credentialSubject": {
+      "type": "StatusList2021",
+      "statusPurpose": "revocation",
+      "encodedList": "H4sIAAAAAAAA..." (gzip + base64)
+    }
+  }
+end note
+
+Rel(statusListService, statusListService, "2. Decompress bitstring")
+note right
+  - Base64 decode
+  - Gzip decompress
+  - Extract bitstring array
+end note
+
+Rel(statusListService, statusListService, "3. Check bit at index")
+note right
+  credentialStatus: {
+    "type": "StatusList2021Entry",
+    "statusListIndex": "94567",
+    "statusListCredential": "https://..."
+  }
+  
+  Check bit 94567:
+  - byteIndex = 94567 / 8 = 11820
+  - bitIndex = 94567 % 8 = 7
+  - bit = bitstring[11820] & (1 << 7)
+  - revoked = bit != 0
+end note
+
+Rel(statusListService, trustIndicator, "4. Update status indicator", "active/revoked")
+
+' EBSI Trust Registry
+Rel(wellKnownService, ebsiRegistry, "Verify EU issuer", "HTTPS GET")
+note right
+  EBSI Trusted Issuers Registry:
+  - Check if issuer DID is in registry
+  - Verify issuer accreditation
+  - Check issuer status (active/suspended)
+end note
+
+' UI Trust Indicators
+note left of trustIndicator
+  **Trust Indicators:**
+  ✅ Verified Domain
+  ✅ EBSI Trusted Issuer
+  ✅ Active (not revoked)
+  
+  ⚠️ Domain Not Verified
+  ❌ Revoked
+  ❌ Issuer Not Trusted
+end note
+
+' Caching Layer
+note bottom of wellKnownService
+  **Caching Strategy:**
+  • DID Configuration: 24 hours TTL
+  • In-memory + AsyncStorage
+  • HTTPS enforcement
+  • Automatic refresh on expiry
+end note
+
+note bottom of statusListService
+  **Caching Strategy:**
+  • Status List: 1 hour TTL
+  • Batch checking for efficiency
+  • Background sync
+  • Privacy-preserving (no individual queries)
+end note
+
+@enduml
