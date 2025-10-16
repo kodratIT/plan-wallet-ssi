@@ -1,0 +1,77 @@
+@startuml DIDComm v2 Message Flow
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Sequence.puml
+
+title DIDComm v2 Message Flow - Authenticated Encryption
+
+Person(sender, "Sender", "Alice's Wallet")
+System(senderAgent, "Sender Agent", "DIDComm Service")
+System(mediator, "Mediator", "Message Relay")
+System(recipientAgent, "Recipient Agent", "DIDComm Service")
+Person(recipient, "Recipient", "Bob's Wallet")
+
+Rel(sender, senderAgent, "1. Create plaintext message")
+note right
+  {
+    "id": "msg-123",
+    "type": "https://didcomm.org/basicmessage/2.0/message",
+    "from": "did:key:alice",
+    "to": ["did:key:bob"],
+    "body": { "content": "Hello Bob!" }
+  }
+end note
+
+Rel(senderAgent, senderAgent, "2. Resolve Bob's DID")
+note right
+  - Get DID Document
+  - Extract keyAgreement keys
+  - Extract service endpoint
+end note
+
+Rel(senderAgent, senderAgent, "3. Pack message (Authenticated)")
+note right
+  a) Perform ECDH (Alice's private + Bob's public)
+  b) Derive shared secret
+  c) Derive encryption key (AES-256-GCM)
+  d) Encrypt message
+  e) Wrap key for Bob
+  f) Build JWE structure
+end note
+
+Rel(senderAgent, senderAgent, "4. Wrap in Forward (if using mediator)")
+note right
+  {
+    "type": "https://didcomm.org/routing/2.0/forward",
+    "to": ["mediator_endpoint"],
+    "body": { "next": "did:key:bob" },
+    "attachments": [{ "data": { "json": {...encrypted...} } }]
+  }
+end note
+
+Rel(senderAgent, mediator, "5. Send via HTTPS POST", "encrypted message")
+
+Rel(mediator, mediator, "6. Store message for Bob")
+note right
+  - Queue message
+  - Wait for pickup or
+  - Push via WebSocket if live delivery
+end note
+
+Rel(recipientAgent, mediator, "7. Pickup messages", "batch request")
+Rel(mediator, recipientAgent, "8. Return messages", "encrypted batch")
+
+Rel(recipientAgent, recipientAgent, "9. Unpack message")
+note right
+  a) Decode JWE
+  b) Find our recipient entry
+  c) Get our private key
+  d) Perform ECDH (Bob's private + Alice's public)
+  e) Derive shared secret
+  f) Derive decryption key
+  g) Decrypt ciphertext
+  h) Parse plaintext message
+end note
+
+Rel(recipientAgent, mediator, "10. Acknowledge receipt")
+Rel(recipientAgent, recipient, "11. Deliver plaintext message")
+
+@enduml

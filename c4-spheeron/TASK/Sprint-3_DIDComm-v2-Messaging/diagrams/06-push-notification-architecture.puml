@@ -1,0 +1,84 @@
+@startuml Push Notification Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Push Notification Architecture - iOS & Android
+
+Container_Boundary(wallet, "Wallet Application") {
+  Component(ui, "UI Layer", "React Native", "User Interface")
+  
+  Component(pushService, "Push Notification Service", "TypeScript", "Handle push notifications")
+  
+  Component(msgHandler, "Message Handler", "TypeScript", "Process incoming messages")
+  
+  Component(navigation, "Navigation Service", "React Navigation", "Deep linking navigation")
+  
+  Component(settings, "Settings Storage", "AsyncStorage", "Notification preferences")
+}
+
+System_Ext(expo, "Expo Push Service", "Unified push notification service")
+System_Ext(fcm, "Firebase Cloud Messaging", "Android push notifications")
+System_Ext(apns, "Apple Push Notification Service", "iOS push notifications")
+System_Ext(mediator, "Mediator Server", "Message relay with push capability")
+
+' Relationships - Registration
+Rel(pushService, expo, "Register device", "Get Expo push token")
+Rel(expo, fcm, "Route to FCM", "Android")
+Rel(expo, apns, "Route to APNs", "iOS")
+Rel(pushService, mediator, "Register push token", "Enable push notifications")
+
+' Relationships - Notification Flow
+Rel(mediator, expo, "Send notification", "New message available")
+Rel(expo, fcm, "Forward", "Android device")
+Rel(expo, apns, "Forward", "iOS device")
+Rel(fcm, pushService, "Deliver notification", "Android")
+Rel(apns, pushService, "Deliver notification", "iOS")
+
+' Relationships - Handling
+Rel(pushService, ui, "Show notification", "Local or system")
+Rel(ui, pushService, "User taps", "notification response")
+Rel(pushService, navigation, "Deep link", "Navigate to screen")
+Rel(pushService, msgHandler, "Trigger", "Message fetch")
+Rel(pushService, settings, "Check preferences", "Filter notifications")
+
+note right of pushService
+  **Notification Types:**
+  • New message
+  • Credential offer
+  • Presentation request
+  • Connection invitation
+  
+  **Channels (Android):**
+  • Messages (HIGH priority)
+  • Credentials (HIGH priority)
+  • Presentations (HIGH priority)
+  
+  **Features:**
+  • Badge count updates
+  • Sound & vibration
+  • Silent notifications
+  • Background processing
+  • Deep linking
+end note
+
+note left of settings
+  **User Preferences:**
+  • Enable/disable all
+  • Per-type control
+  • Sound on/off
+  • Vibrate on/off
+  • Badge on/off
+  • Quiet hours (future)
+end note
+
+note bottom of mediator
+  **Server-Side Integration:**
+  Mediator stores push tokens
+  and sends notifications when:
+  • New message arrives
+  • Live delivery is disabled
+  • Wallet app is background/closed
+end note
+
+@enduml

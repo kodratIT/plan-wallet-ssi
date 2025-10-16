@@ -1,0 +1,112 @@
+@startuml Mediator Coordination Protocol
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Sequence.puml
+
+title DIDComm Mediator Coordination Protocol
+
+Person(user, "User", "Wallet Holder")
+System(wallet, "Wallet", "DIDComm Agent")
+System(mediator, "Mediator", "Message Router")
+
+== Registration Phase ==
+
+Rel(user, wallet, "1. Configure mediator")
+Rel(wallet, mediator, "2. Send mediation request", "mediate-request")
+note right
+  {
+    "type": ".../coordinate-mediation/2.0/mediate-request",
+    "from": "did:key:wallet",
+    "to": ["did:web:mediator"],
+    "body": {}
+  }
+end note
+
+alt Grant Access
+  Rel(mediator, wallet, "3a. Grant mediation", "mediate-grant")
+  note left
+    {
+      "type": ".../coordinate-mediation/2.0/mediate-grant",
+      "body": {
+        "routing_did": ["did:web:mediator#routing-key-1"],
+        "endpoint": "https://mediator.example.com/inbox"
+      }
+    }
+  end note
+  
+  Rel(wallet, wallet, "4. Store mediator config")
+  note right
+    - Save routing DIDs
+    - Save endpoint
+    - Mark as primary mediator
+  end note
+else Deny Access
+  Rel(mediator, wallet, "3b. Deny mediation", "mediate-deny")
+end
+
+== Keylist Update Phase ==
+
+Rel(wallet, wallet, "5. Generate new keys")
+Rel(wallet, mediator, "6. Update keylist", "keylist-update")
+note right
+  {
+    "type": ".../coordinate-mediation/2.0/keylist-update",
+    "body": {
+      "updates": [
+        {
+          "recipient_did": "did:key:wallet#key-1",
+          "action": "add"
+        }
+      ]
+    }
+  }
+end note
+
+Rel(mediator, wallet, "7. Confirm update", "keylist-update-response")
+
+== Message Pickup Phase ==
+
+Rel(wallet, mediator, "8. Request status", "status-request")
+Rel(mediator, wallet, "9. Return status", "status")
+note left
+  {
+    "body": {
+      "message_count": 5,
+      "live_delivery": false
+    }
+  }
+end note
+
+Rel(wallet, mediator, "10. Request delivery", "delivery-request (limit: 10)")
+Rel(mediator, wallet, "11. Deliver messages", "delivery (batch)")
+note left
+  {
+    "body": { "has_more": true },
+    "attachments": [
+      { "data": { "json": {...encrypted_message_1...} } },
+      { "data": { "json": {...encrypted_message_2...} } },
+      ...
+    ]
+  }
+end note
+
+Rel(wallet, mediator, "12. Acknowledge receipt", "messages-received")
+
+== Live Delivery Phase ==
+
+Rel(wallet, mediator, "13. Enable live delivery", "live-delivery-change")
+note right
+  {
+    "body": {
+      "live_delivery": true
+    }
+  }
+end note
+
+Rel(mediator, wallet, "14. Confirm change")
+Rel(wallet, mediator, "15. Open WebSocket connection")
+note right
+  wss://mediator.example.com/live
+end note
+
+Rel(mediator, wallet, "16. Push messages in real-time", "WebSocket")
+
+@enduml

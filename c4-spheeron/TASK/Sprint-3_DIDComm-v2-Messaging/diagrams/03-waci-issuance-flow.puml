@@ -1,0 +1,162 @@
+@startuml WACI DIDComm Credential Issuance Flow
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Sequence.puml
+
+title WACI DIDComm - Credential Issuance Protocol
+
+Person(holder, "Holder", "Alice")
+System(holderWallet, "Holder Wallet", "Wallet App")
+System(issuer, "Issuer", "University System")
+System(issuerAgent, "Issuer Agent", "Issuance Service")
+
+== Credential Offer Phase ==
+
+Rel(issuer, issuerAgent, "1. Initiate credential offer")
+note right
+  - Student completed degree
+  - System generates credential data
+end note
+
+Rel(issuerAgent, holderWallet, "2. Send credential offer", "offer-credential")
+note right
+  {
+    "type": ".../issue-credential/3.0/offer-credential",
+    "from": "did:web:university",
+    "to": ["did:key:alice"],
+    "body": {
+      "credential_preview": {
+        "type": "UniversityDegree",
+        "attributes": [
+          { "name": "name", "value": "Alice Smith" },
+          { "name": "degree", "value": "Bachelor of Science" },
+          { "name": "major", "value": "Computer Science" },
+          { "name": "graduation_date", "value": "2024-05-15" }
+        ]
+      },
+      "formats": [
+        { "attach_id": "manifest-1", "format": "dif/credential-manifest@v1.0" }
+      ],
+      "comment": "Your degree credential is ready!"
+    },
+    "attachments": [
+      {
+        "id": "manifest-1",
+        "data": { "json": {...credential_manifest...} }
+      }
+    ]
+  }
+end note
+
+Rel(holderWallet, holder, "3. Display offer notification")
+note left
+  Push Notification:
+  "🎓 New Credential Offer
+  University wants to issue you
+  a Bachelor of Science degree"
+end note
+
+Rel(holder, holderWallet, "4. View offer details")
+Rel(holderWallet, holderWallet, "5. Show credential preview")
+note right
+  UI displays:
+  - Issuer name & DID
+  - Credential type
+  - Attribute preview
+  - Accept / Decline buttons
+end note
+
+alt Accept Offer
+  Rel(holder, holderWallet, "6a. Accept offer")
+  
+  == Credential Request Phase ==
+  
+  Rel(holderWallet, issuerAgent, "7. Send credential request", "request-credential")
+  note right
+    {
+      "type": ".../issue-credential/3.0/request-credential",
+      "from": "did:key:alice",
+      "to": ["did:web:university"],
+      "thid": "offer-msg-id",
+      "body": {
+        "formats": [
+          { "attach_id": "manifest-1", "format": "dif/credential-manifest@v1.0" }
+        ],
+        "comment": "Accepting credential offer"
+      }
+    }
+  end note
+  
+  == Credential Issuance Phase ==
+  
+  Rel(issuerAgent, issuerAgent, "8. Sign credential")
+  note right
+    - Bind credential to holder DID
+    - Sign with issuer's private key
+    - Generate VC-JWT or JSON-LD proof
+  end note
+  
+  Rel(issuerAgent, holderWallet, "9. Issue credential", "issue-credential")
+  note right
+    {
+      "type": ".../issue-credential/3.0/issue-credential",
+      "from": "did:web:university",
+      "to": ["did:key:alice"],
+      "thid": "offer-msg-id",
+      "body": {
+        "formats": [
+          { "attach_id": "credential-1", "format": "aries/ld-proof-vc@v1.0" }
+        ],
+        "comment": "Your degree credential"
+      },
+      "attachments": [
+        {
+          "id": "credential-1",
+          "mime_type": "application/json",
+          "data": { "json": {...signed_credential...} }
+        }
+      ]
+    }
+  end note
+  
+  Rel(holderWallet, holderWallet, "10. Verify & store credential")
+  note right
+    - Verify issuer signature
+    - Validate credential schema
+    - Check expiration
+    - Store in secure storage
+  end note
+  
+  Rel(holderWallet, holder, "11. Display success notification")
+  note left
+    "✅ Credential Received!
+    Bachelor of Science
+    from University"
+  end note
+  
+  Rel(holderWallet, issuerAgent, "12. Send acknowledgment", "ack")
+  note right
+    {
+      "type": ".../issue-credential/3.0/ack",
+      "thid": "offer-msg-id",
+      "body": {
+        "status": "OK",
+        "comment": "Credential received successfully"
+      }
+    }
+  end note
+  
+else Decline Offer
+  Rel(holder, holderWallet, "6b. Decline offer")
+  Rel(holderWallet, issuerAgent, "7b. Send problem report", "problem-report")
+  note right
+    {
+      "type": ".../report-problem/2.0/problem-report",
+      "thid": "offer-msg-id",
+      "body": {
+        "code": "offer-declined",
+        "comment": "User declined the credential offer"
+      }
+    }
+  end note
+end
+
+@enduml

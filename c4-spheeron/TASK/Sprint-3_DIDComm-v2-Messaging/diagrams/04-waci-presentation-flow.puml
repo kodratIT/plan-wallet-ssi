@@ -1,0 +1,230 @@
+@startuml WACI DIDComm Credential Presentation Flow
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Sequence.puml
+
+title WACI DIDComm - Credential Presentation Protocol
+
+Person(holder, "Holder", "Alice")
+System(holderWallet, "Holder Wallet", "Wallet App")
+System(verifier, "Verifier", "Job Portal")
+System(verifierAgent, "Verifier Agent", "Verification Service")
+
+== Presentation Request Phase ==
+
+Rel(verifier, verifierAgent, "1. Initiate presentation request")
+note right
+  Job application requires:
+  - Proof of degree
+  - Age verification (>18)
+end note
+
+Rel(verifierAgent, verifierAgent, "2. Build Presentation Definition")
+note right
+  Using Presentation Exchange v2:
+  {
+    "id": "job-application-pex",
+    "input_descriptors": [
+      {
+        "id": "degree_credential",
+        "constraints": {
+          "fields": [
+            {
+              "path": ["$.type"],
+              "filter": { "const": "UniversityDegree" }
+            },
+            {
+              "path": ["$.credentialSubject.degree"],
+              "purpose": "Verify degree completion"
+            }
+          ]
+        }
+      }
+    ]
+  }
+end note
+
+Rel(verifierAgent, holderWallet, "3. Send presentation request", "request-presentation")
+note right
+  {
+    "type": ".../present-proof/3.0/request-presentation",
+    "from": "did:web:jobportal",
+    "to": ["did:key:alice"],
+    "body": {
+      "presentation_definition": {...PEx_v2_definition...},
+      "comment": "Please share your degree credential for job application"
+    }
+  }
+end note
+
+Rel(holderWallet, holder, "4. Display request notification")
+note left
+  Push Notification:
+  "🔍 Presentation Request
+  Job Portal requests proof
+  of your degree"
+end note
+
+== Credential Selection Phase ==
+
+Rel(holder, holderWallet, "5. View request details")
+Rel(holderWallet, holderWallet, "6. Evaluate presentation definition")
+note right
+  - Parse input descriptors
+  - Find matching credentials
+  - Extract required fields
+end note
+
+Rel(holderWallet, holderWallet, "7. Find matching credentials")
+note right
+  Searching local storage:
+  ✅ UniversityDegree from University
+  ❌ DriverLicense (not matching)
+  ❌ EmploymentCredential (not matching)
+end note
+
+Rel(holderWallet, holder, "8. Show credential selector UI")
+note left
+  Display:
+  - Request purpose
+  - Required credentials
+  - Matching credentials
+  - Field selection (selective disclosure)
+  - Privacy impact indicator
+end note
+
+alt Consent & Submit
+  Rel(holder, holderWallet, "9a. Select credentials & fields")
+  note right
+    User selects:
+    ✅ Degree: Bachelor of Science
+    ✅ Major: Computer Science
+    ✅ Graduation Date: 2024-05-15
+    ❌ Student ID: [hidden]
+    ❌ GPA: [hidden]
+  end note
+  
+  == Presentation Creation Phase ==
+  
+  Rel(holderWallet, holderWallet, "10. Build Presentation Submission")
+  note right
+    Using Presentation Exchange v2:
+    {
+      "id": "submission-123",
+      "definition_id": "job-application-pex",
+      "descriptor_map": [
+        {
+          "id": "degree_credential",
+          "format": "ldp_vc",
+          "path": "$.verifiableCredential[0]"
+        }
+      ]
+    }
+  end note
+  
+  Rel(holderWallet, holderWallet, "11. Create Verifiable Presentation")
+  note right
+    - Wrap selected credentials in VP
+    - Sign VP with holder's key (holder binding)
+    - Apply selective disclosure if needed
+  end note
+  
+  == Presentation Submission Phase ==
+  
+  Rel(holderWallet, verifierAgent, "12. Send presentation", "presentation")
+  note right
+    {
+      "type": ".../present-proof/3.0/presentation",
+      "from": "did:key:alice",
+      "to": ["did:web:jobportal"],
+      "thid": "request-msg-id",
+      "body": {
+        "presentation_submission": {...PEx_submission...},
+        "comment": "Degree credential for job application"
+      },
+      "attachments": [
+        {
+          "id": "vp-1",
+          "mime_type": "application/json",
+          "data": {
+            "json": {
+              "@context": [...],
+              "type": ["VerifiablePresentation"],
+              "verifiableCredential": [{...selected_credential...}],
+              "proof": {...holder_signature...}
+            }
+          }
+        }
+      ]
+    }
+  end note
+  
+  == Verification Phase ==
+  
+  Rel(verifierAgent, verifierAgent, "13. Verify presentation")
+  note right
+    a) Validate presentation structure
+    b) Verify holder's signature
+    c) Verify issuer's signature on VC
+    d) Check credential status (not revoked)
+    e) Evaluate constraints match
+    f) Validate submission against definition
+  end note
+  
+  alt Verification Success
+    Rel(verifierAgent, verifier, "14a. Verification successful")
+    note right
+      ✅ Degree verified:
+      - Bachelor of Science
+      - Computer Science
+      - Issued by University
+      - Valid & not revoked
+    end note
+    
+    Rel(verifierAgent, holderWallet, "15a. Send acknowledgment", "ack")
+    note right
+      {
+        "type": ".../present-proof/3.0/ack",
+        "thid": "request-msg-id",
+        "body": {
+          "status": "OK",
+          "comment": "Presentation verified successfully"
+        }
+      }
+    end note
+    
+    Rel(holderWallet, holder, "16a. Display success")
+    note left
+      "✅ Presentation Verified
+      Your credentials were
+      successfully verified"
+    end note
+  else Verification Failed
+    Rel(verifierAgent, verifier, "14b. Verification failed")
+    Rel(verifierAgent, holderWallet, "15b. Send problem report")
+    note right
+      {
+        "type": ".../report-problem/2.0/problem-report",
+        "thid": "request-msg-id",
+        "body": {
+          "code": "verification-failed",
+          "comment": "Credential signature invalid"
+        }
+      }
+    end note
+  end
+  
+else Decline Request
+  Rel(holder, holderWallet, "9b. Decline request")
+  Rel(holderWallet, verifierAgent, "10b. Send problem report", "problem-report")
+  note right
+    {
+      "type": ".../report-problem/2.0/problem-report",
+      "thid": "request-msg-id",
+      "body": {
+        "code": "request-declined",
+        "comment": "User declined presentation request"
+      }
+    }
+  end note
+end
+
+@enduml

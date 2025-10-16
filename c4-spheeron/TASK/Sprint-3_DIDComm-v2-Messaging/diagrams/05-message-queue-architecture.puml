@@ -1,0 +1,58 @@
+@startuml Message Queue Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Message Queue Architecture - Reliable Message Delivery
+
+Container_Boundary(wallet, "Wallet Application") {
+  Component(ui, "UI Layer", "React Native", "User Interface")
+  
+  Component(msgQueue, "Message Queue Service", "TypeScript", "Manages outgoing message queue with retry logic")
+  
+  Component(didcomm, "DIDComm Service", "TypeScript", "Pack/unpack DIDComm messages")
+  
+  Component(mediator, "Mediator Service", "TypeScript", "Coordinate with mediators")
+  
+  Component(storage, "Async Storage", "React Native", "Persistent storage for queue")
+  
+  Component(network, "Network Monitor", "NetInfo", "Monitor network connectivity")
+}
+
+System_Ext(mediatorServer, "Mediator Server", "Remote message relay")
+System_Ext(recipient, "Recipient Agent", "Target DIDComm agent")
+
+' Relationships
+Rel(ui, msgQueue, "Enqueue message", "async")
+Rel(msgQueue, storage, "Persist queue state", "JSON")
+Rel(msgQueue, network, "Monitor connectivity", "events")
+Rel(msgQueue, didcomm, "Pack message", "async")
+Rel(didcomm, mediatorServer, "Send via HTTPS", "POST")
+Rel(didcomm, recipient, "Send direct", "POST")
+Rel(msgQueue, mediator, "Use mediator routing", "if configured")
+
+note right of msgQueue
+  **Queue Features:**
+  • FIFO with priority support
+  • Exponential backoff retry
+  • Max 5 retry attempts
+  • Delays: 1s, 2s, 4s, 8s, 16s
+  • Network-aware processing
+  • Persistent storage
+  • Manual retry for failed
+  
+  **States:**
+  • pending: Ready to send
+  • processing: Currently sending
+  • sent: Successfully delivered
+  • failed: Max retries exceeded
+end note
+
+note left of network
+  **Network Awareness:**
+  • Pause queue when offline
+  • Resume when back online
+  • Automatic retry scheduling
+end note
+
+@enduml
