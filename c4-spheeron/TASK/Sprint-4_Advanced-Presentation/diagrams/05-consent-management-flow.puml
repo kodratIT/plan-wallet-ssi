@@ -1,0 +1,300 @@
+@startuml Consent-Management-Flow
+skinparam sequenceMessageAlign center
+title Consent Management Flow (US-4.8)
+
+actor User as user
+participant "Wallet UI" as ui
+participant "Consent Service" as consent
+participant "Disclosure Selector" as disclosure
+participant "Presentation Service" as present
+participant "Verifier" as verifier
+database "Consent Storage" as storage
+
+== Phase 1: First Presentation Request ==
+
+verifier -> ui: Presentation request
+activate ui
+
+ui -> consent: checkConsent(verifierDID)
+activate consent
+consent -> storage: getConsent(verifierDID)
+activate storage
+storage --> consent: null (no consent found)
+deactivate storage
+
+consent --> ui: No existing consent
+deactivate consent
+
+== Phase 2: Show Consent Dialog ==
+
+ui -> ui: showConsentModal()
+
+note right of ui
+  Consent Modal shows:
+  - Verifier information
+    * Name
+    * DID
+    * Domain (if verified)
+    * Trust indicators
+  
+  - Requested data
+    * Required claims
+    * Optional claims
+    * Purpose of request
+  
+  - Privacy impact
+    * What will be shared
+    * What will NOT be shared
+    * Risk level
+  
+  - Consent options
+    [ ] Remember this decision
+    [ ] Allow for this session only
+    [ ] Set expiry (1h, 1d, 1w, never)
+end note
+
+ui -> user: Show consent dialog
+activate user
+
+== Phase 3: User Decision ==
+
+alt User Denies
+    user -> ui: Deny presentation
+    ui -> verifier: Presentation declined
+    ui -> consent: logDecision(verifierDID, "denied")
+    activate consent
+    consent -> storage: saveDecision()
+    activate storage
+    storage --> consent: saved
+    deactivate storage
+    deactivate consent
+    ui --> user: Presentation declined
+else User Approves
+    user -> ui: Approve presentation + Remember + Expiry 7 days
+    
+    == Phase 4: Grant Consent ==
+    ui -> consent: grantConsent(consentData)
+    activate consent
+    
+    note right of consent
+      Consent Data:
+      - verifierDID: "did:example:verifier"
+      - scope: ["name", "email"]
+      - remember: true
+      - expiresIn: 604800 (7 days)
+      - grantedAt: timestamp
+      - conditions:
+        * purpose: "employment_verification"
+        * location: "https://verifier.com"
+    end note
+    
+    consent -> consent: generateConsentId()
+    consent -> storage: saveConsent(consent)
+    activate storage
+    storage --> consent: Consent saved
+    deactivate storage
+    
+    consent --> ui: Consent granted (consentId)
+    deactivate consent
+    
+    == Phase 5: Process Presentation ==
+    ui -> disclosure: showDisclosureSelector(required)
+    activate disclosure
+    disclosure -> user: Select claims to disclose
+    user -> disclosure: Selected: [name, email]
+    disclosure --> ui: User selection
+    deactivate disclosure
+    
+    ui -> present: createPresentation(selected, verifier)
+    activate present
+    present -> present: Generate VP
+    present --> ui: Verifiable Presentation
+    deactivate present
+    
+    ui -> verifier: Submit presentation
+    activate verifier
+    verifier --> ui: Verification result
+    deactivate verifier
+    
+    == Phase 6: Log Activity ==
+    ui -> consent: logPresentationActivity(data)
+    activate consent
+    consent -> storage: updateActivityLog()
+    activate storage
+    storage --> consent: logged
+    deactivate storage
+    deactivate consent
+    
+    ui --> user: Presentation successful
+end
+
+deactivate user
+deactivate ui
+
+== Subsequent Presentation (Consent Exists) ==
+
+verifier -> ui: Presentation request (same verifier)
+activate ui
+
+ui -> consent: checkConsent(verifierDID)
+activate consent
+consent -> storage: getConsent(verifierDID)
+activate storage
+storage --> consent: Found existing consent
+deactivate storage
+
+consent -> consent: checkExpiry()
+
+alt Consent Expired
+    consent --> ui: Consent expired
+    ui -> user: Previous consent expired, please grant again
+    note right of ui
+      Flow returns to Phase 2
+    end note
+else Consent Still Valid
+    consent --> ui: Valid consent found
+    deactivate consent
+    
+    note right of ui
+      Consent Details:
+      - Previously approved
+      - Granted: 2 days ago
+      - Expires: in 5 days
+      - Scope: [name, email]
+      
+      Options:
+      - Use saved consent
+      - Modify consent
+      - Revoke consent
+    end note
+    
+    ui -> user: Use saved consent for Verifier XYZ?
+    activate user
+    
+    alt User Confirms
+        user -> ui: Use saved consent
+        
+        ui -> present: createPresentation(savedScope, verifier)
+        activate present
+        present --> ui: Verifiable Presentation
+        deactivate present
+        
+        ui -> verifier: Submit presentation
+        activate verifier
+        verifier --> ui: Verification result
+        deactivate verifier
+        
+        ui -> consent: logActivity(consentId)
+        activate consent
+        consent -> storage: incrementUsageCount()
+        activate storage
+        storage --> consent: updated
+        deactivate storage
+        deactivate consent
+        
+        ui --> user: Presentation successful (using saved consent)
+    else User Modifies
+        user -> ui: Modify consent
+        note right of ui
+          Flow returns to Phase 2
+        end note
+    else User Revokes
+        user -> ui: Revoke consent
+        
+        == Phase 7: Revoke Consent ==
+        ui -> consent: revokeConsent(verifierDID)
+        activate consent
+        
+        consent -> storage: deleteConsent(verifierDID)
+        activate storage
+        storage --> consent: Consent revoked
+        deactivate storage
+        
+        consent -> storage: logRevocation()
+        activate storage
+        storage --> consent: logged
+        deactivate storage
+        
+        consent --> ui: Consent revoked
+        deactivate consent
+        
+        ui --> user: Consent revoked for Verifier XYZ
+    end
+end
+
+deactivate user
+deactivate ui
+
+== Consent Management Screen ==
+
+user -> ui: Open Consent Management
+activate ui
+
+ui -> consent: getAllConsents()
+activate consent
+consent -> storage: listAllConsents()
+activate storage
+storage --> consent: List of consents
+deactivate storage
+consent --> ui: Consent list
+deactivate consent
+
+note right of ui
+  Consent List shows:
+  - Verifier name & DID
+  - Granted date
+  - Expiry date
+  - Usage count
+  - Scope (disclosed claims)
+  - Last used
+  
+  Actions:
+  - View details
+  - Modify
+  - Revoke
+  - Extend expiry
+end note
+
+ui -> user: Display consent list
+activate user
+
+alt User Revokes Specific Consent
+    user -> ui: Revoke consent for Verifier ABC
+    ui -> consent: revokeConsent("did:example:abc")
+    activate consent
+    consent -> storage: deleteConsent()
+    activate storage
+    storage --> consent: deleted
+    deactivate storage
+    consent --> ui: Consent revoked
+    deactivate consent
+    ui --> user: Consent revoked
+else User Extends Expiry
+    user -> ui: Extend expiry to 30 days
+    ui -> consent: updateExpiry(consentId, 30 days)
+    activate consent
+    consent -> storage: updateConsent()
+    activate storage
+    storage --> consent: updated
+    deactivate storage
+    consent --> ui: Expiry extended
+    deactivate consent
+    ui --> user: Expiry extended to 30 days
+end
+
+deactivate user
+deactivate ui
+
+note over user, storage
+  Consent Management Features:
+  - Per-verifier consent settings
+  - Remember consent option
+  - Configurable expiry
+  - Consent revocation
+  - Usage tracking
+  - Audit trail
+  - Privacy-preserving (no PII in logs)
+  - GDPR compliant
+end note
+
+@enduml

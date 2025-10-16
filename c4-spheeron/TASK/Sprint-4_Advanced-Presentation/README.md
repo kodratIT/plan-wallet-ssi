@@ -179,6 +179,13 @@ Setelah menyelesaikan Sprint 4:
 
 **Total Estimasi**: 19 jam
 
+**Implementation Notes**:
+- Component: `PredicateSelector.tsx` - Full UI implementation
+- Service: Uses `BBSService` for zero-knowledge proof generation
+- Common predicates: age>18, age>21, age>65, income>50k, credit>700
+- Educational UI: Step-by-step ZKP explanation
+- Tests: Full component testing with various credential types
+
 ---
 
 ### US-4.6: JWT VC Presentation Profile
@@ -207,6 +214,13 @@ Setelah menyelesaikan Sprint 4:
 
 **Total Estimasi**: 23 jam
 
+**Implementation Notes**:
+- Service: `JWTVPService.ts` - Complete JWT VP implementation
+- Standard compliance: W3C VC Data Model + JWT VC Presentation Profile
+- Features: VP-JWT creation, verification, VC extraction, holder binding
+- Security: Short-lived JWTs (5 min), nonce validation, audience restriction
+- Screen: `VPJWTScreen.tsx` for presentation creation UI
+
 ---
 
 ### US-4.7: Riwayat & Analytics Presentasi
@@ -233,6 +247,14 @@ Setelah menyelesaikan Sprint 4:
 - [ ] Tulis tests (3 jam)
 
 **Total Estimasi**: 19 jam
+
+**Implementation Notes**:
+- Service: `PresentationHistoryService.ts` - Complete history management
+- Storage: AsyncStorage with max 1000 records
+- Types: Full, selective, predicate, ZKP presentations tracked
+- Features: Filtering, statistics, export to JSON
+- Component: `HistoryTimeline.tsx` - Beautiful timeline UI with date grouping
+- Analytics: Usage stats, most used credentials, presentation trends
 
 ---
 
@@ -262,6 +284,14 @@ Setelah menyelesaikan Sprint 4:
 
 **Total Estimasi**: 23 jam
 
+**Implementation Notes**:
+- Service: `ConsentService.ts` - Previously implemented in Step 6
+- Components: `ConsentManager.tsx` - Grant/deny consent UI
+- Screen: `ConsentListScreen.tsx` - View and manage all consents
+- Features: Remember consent, configurable expiry (1/7/30/90 days), revocation
+- Privacy: Audit trail, usage tracking, secure local storage
+- UI: Beautiful consent prompt with scope display and privacy notices
+
 ---
 
 ### US-4.9: Template Presentasi
@@ -288,6 +318,15 @@ Setelah menyelesaikan Sprint 4:
 - [ ] Tulis tests (3 jam)
 
 **Total Estimasi**: 19 jam
+
+**Implementation Notes**:
+- Service: `TemplateService.ts` - Full CRUD operations for templates
+- Component: `TemplateManager.tsx` - Template list and management
+- Features: Create, edit, delete templates, set default per credential type
+- Storage: AsyncStorage with per-type defaults
+- Modal: `CreateTemplateModal` - Create new templates with validation
+- Use cases: Quick presentation of common claim sets (e.g., KYC basic, Full profile)
+- Analytics: Usage tracking per template
 
 ---
 

@@ -1,176 +1,203 @@
-@startuml
+@startuml SD-JWT-Flow
+!define C4Container(e_alias, e_label, e_techn) participant "e_label" as e_alias <<e_techn>>
+skinparam sequenceMessageAlign center
 title SD-JWT Selective Disclosure Flow (US-4.1)
-caption Complete flow from credential reception to selective presentation
 
-actor User
-participant "Wallet UI" as UI
-participant "SD-JWT\nService" as SDJWT
-participant "Disclosure\nSelector" as Selector
-participant "Presentation\nService" as Present
-participant "Verifier" as Verifier
-database "Credential\nStore" as Store
+actor User as user
+participant "Wallet UI" as ui
+participant "SD-JWT Service" as sdjwt
+participant "Disclosure Selector" as selector
+participant "Presentation Service" as present
+participant "Verifier" as verifier
+database "Credential Store" as store
 
 == Phase 1: Receive SD-JWT Credential ==
-User -> UI: Accept credential offer
-UI -> SDJWT: parseSDJWT(credential)
-activate SDJWT
 
-note right of SDJWT
-SD-JWT Structure:
-<JWT>~<Disclosure1>~<Disclosure2>~...~<KB-JWT>
+user -> ui: Accept credential offer
+activate ui
+ui -> sdjwt: parseSDJWT(credential)
+activate sdjwt
 
-JWT: Issuer-signed claims
-Disclosures: Salted claim values
-KB-JWT: Key Binding (optional)
+note right of sdjwt
+  SD-JWT Structure:
+  JWT~Disclosure1~Disclosure2~...~KB-JWT
+  
+  JWT: Issuer-signed claims
+  Disclosures: Salted claim values
+  KB-JWT: Key Binding (optional)
 end note
 
-SDJWT -> SDJWT: validateStructure()
-SDJWT -> SDJWT: verifyIssuerSignature()
-SDJWT -> SDJWT: extractDisclosures()
+sdjwt -> sdjwt: validateStructure()
+sdjwt -> sdjwt: verifyIssuerSignature()
+sdjwt -> sdjwt: extractDisclosures()
 
-SDJWT --> UI: Parsed SD-JWT
-deactivate SDJWT
+sdjwt --> ui: Parsed SD-JWT
+deactivate sdjwt
 
-UI -> Store: saveCredential(sdJwt)
-activate Store
-Store --> UI: saved
-deactivate Store
+ui -> store: saveCredential(sdJwt)
+activate store
+store --> ui: saved
+deactivate store
+deactivate ui
 
 == Phase 2: Presentation Request ==
-Verifier -> UI: Presentation request\n+ Presentation Definition
-activate UI
 
-UI -> Present: processPresentationRequest(request)
-activate Present
+verifier -> ui: Presentation request + Definition
+activate ui
 
-Present -> Present: parsePresentationDefinition()
-Present -> Store: findMatchingCredentials()
-activate Store
-Store --> Present: matching SD-JWT credentials
-deactivate Store
+ui -> present: processPresentationRequest(request)
+activate present
 
-Present --> UI: Required fields: [name, age, address]
-deactivate Present
+present -> present: parsePresentationDefinition()
+present -> store: findMatchingCredentials()
+activate store
+store --> present: matching SD-JWT credentials
+deactivate store
+
+present --> ui: Required: [name, age, address]
+deactivate present
 
 == Phase 3: Selective Disclosure ==
-UI -> Selector: showDisclosureSelector(credential, required)
-activate Selector
 
-note right of Selector
-Disclosure Options:
-☑ name (required)
-☑ age (required)
-☐ address (optional)
-☐ email (optional)
-☐ phone (optional)
+ui -> selector: showDisclosureSelector(cred, required)
+activate selector
 
-User can:
-• Select optional claims
-• View privacy impact
-• See what will be shared
+note right of selector
+  Disclosure Options:
+  [X] name (required)
+  [X] age (required)
+  [ ] address (optional)
+  [ ] email (optional)
+  [ ] phone (optional)
+  
+  User can:
+  - Select optional claims
+  - View privacy impact
+  - Preview what will be shared
 end note
 
-Selector --> User: Select claims to disclose
+selector -> user: Display disclosure options
+activate user
 
-User -> Selector: Select: [name, age]\nHide: [address, email, phone]
+user -> selector: Select: [name, age]
 
-Selector -> Selector: validateRequired()
-alt Required claims not selected
-    Selector --> User: ❌ Must select required claims
-    User -> Selector: Add required claims
+selector -> selector: validateRequired()
+
+alt Required claims missing
+    selector -> user: Error: Must select required
+    user -> selector: Add required claims
 end
 
-Selector -> Selector: calculatePrivacyImpact()
-Selector --> User: Show preview:\n"You will share:\n✓ Name\n✓ Age\nVerifier will NOT see:\n✗ Address\n✗ Email\n✗ Phone"
+selector -> selector: calculatePrivacyImpact()
+selector -> user: Show preview
+note left of user
+  You will share:
+  - Name
+  - Age
+  
+  Hidden:
+  - Address
+  - Email
+  - Phone
+end note
 
-User -> Selector: Confirm disclosure
-Selector --> UI: Selected claims: [name, age]
-deactivate Selector
+user -> selector: Confirm disclosure
+deactivate user
+
+selector --> ui: Selected: [name, age]
+deactivate selector
 
 == Phase 4: Generate Presentation ==
-UI -> SDJWT: createPresentation(credential, selected, verifier, nonce)
-activate SDJWT
 
-SDJWT -> SDJWT: filterDisclosures(selected)
+ui -> sdjwt: createPresentation(cred, selected, verifier, nonce)
+activate sdjwt
 
-note right of SDJWT
-Only include disclosures for:
-• name
-• age
+sdjwt -> sdjwt: filterDisclosures(selected)
 
-Exclude disclosures for:
-• address
-• email  
-• phone
+note right of sdjwt
+  Only include disclosures for:
+  - name
+  - age
+  
+  Exclude:
+  - address
+  - email
+  - phone
 end note
 
-SDJWT -> SDJWT: generateKeyBinding(holderDID, verifier, nonce)
+sdjwt -> sdjwt: generateKeyBinding(holder, verifier, nonce)
 
-note right of SDJWT
-Key Binding JWT:
-{
-  "iat": timestamp,
-  "aud": verifierDID,
-  "nonce": nonce,
-  "sd_hash": hash(sd_jwt)
-}
-Signed by holder
+note right of sdjwt
+  Key Binding JWT:
+  - iat: timestamp
+  - aud: verifierDID
+  - nonce: nonce
+  - sd_hash: hash(sd_jwt)
+  
+  Signed by holder
 end note
 
-SDJWT -> SDJWT: assemblePresentation()
+sdjwt -> sdjwt: assemblePresentation()
 
-note right of SDJWT
-Final SD-JWT Presentation:
-<JWT>~<Disclosure_name>~<Disclosure_age>~<KB-JWT>
-
-Only selected disclosures included
+note right of sdjwt
+  Final Presentation:
+  JWT~Disclosure_name~Disclosure_age~KB-JWT
+  
+  Only selected disclosures included
 end note
 
-SDJWT --> UI: SD-JWT Presentation
-deactivate SDJWT
+sdjwt --> ui: SD-JWT Presentation
+deactivate sdjwt
 
 == Phase 5: Submit Presentation ==
-UI -> Present: submitPresentation(presentation, verifier)
-activate Present
 
-Present -> Verifier: POST /presentation\n+ SD-JWT Presentation
-activate Verifier
+ui -> present: submitPresentation(presentation, verifier)
+activate present
 
-Verifier -> Verifier: verifyIssuerSignature()
-Verifier -> Verifier: verifyKeyBinding(holderDID)
-Verifier -> Verifier: validateNonce()
-Verifier -> Verifier: extractRevealedClaims()
+present -> verifier: POST /presentation
+activate verifier
 
-note right of Verifier
-Verifier sees only:
-✓ name: "John Doe"
-✓ age: 30
+verifier -> verifier: verifyIssuerSignature()
+verifier -> verifier: verifyKeyBinding(holderDID)
+verifier -> verifier: validateNonce()
+verifier -> verifier: extractRevealedClaims()
 
-Verifier does NOT see:
-✗ address
-✗ email
-✗ phone
+note right of verifier
+  Verifier sees only:
+  - name: "John Doe"
+  - age: 30
+  
+  Verifier does NOT see:
+  - address
+  - email
+  - phone
 end note
 
-Verifier --> Present: ✅ Presentation accepted
-deactivate Verifier
+verifier --> present: Presentation accepted
+deactivate verifier
 
-Present --> UI: Success
-deactivate Present
+present --> ui: Success
+deactivate present
 
 == Phase 6: Log Activity ==
-UI -> Store: logPresentationActivity({
-  credentialId,
-  verifier,
-  disclosed: [name, age],
-  timestamp
-})
-activate Store
-Store --> UI: logged
-deactivate Store
 
-UI --> User: ✅ "Credential shared successfully!\nShared: name, age\nPrivate: address, email, phone"
+ui -> store: logPresentationActivity(data)
+activate store
+store --> ui: logged
+deactivate store
 
-deactivate UI
+ui --> user: Success: Credential shared
+note left of user
+  Shared:
+  - name
+  - age
+  
+  Private:
+  - address
+  - email
+  - phone
+end note
+
+deactivate ui
 
 @enduml

@@ -1,0 +1,127 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - Advanced Presentation Architecture (Sprint 4)
+caption Complete Privacy-Preserving Presentation System
+
+LAYOUT_WITH_LEGEND()
+
+Container_Boundary(ui, "UI Layer") {
+    Component(disclosureUI, "Disclosure Selector", "React Component", "Intuitive claim selection\nwith privacy indicators")
+    Component(predicateUI, "Predicate Proof UI", "React Component", "Age verification UI\n(>18, >21, ranges)")
+    Component(consentUI, "Consent Modal", "React Component", "Per-verifier consent\nmanagement")
+    Component(historyUI, "History Timeline", "React Component", "Presentation activity\ntimeline view")
+}
+
+Container_Boundary(state, "State Management") {
+    Component(presentStore, "Presentation Store", "Redux Slice", "Presentation state\nand metadata")
+    Component(consentStore, "Consent Store", "Redux Slice", "Consent preferences\nper verifier")
+}
+
+Container_Boundary(services, "Business Logic - Cryptography") {
+    Component(sdJwtService, "SD-JWT Service", "TypeScript + jose", "Parse/create SD-JWT\nSelective disclosure\nKey binding")
+    Component(bbsService, "BBS+ Service", "TypeScript + @mattrglobal", "BBS+ signatures\nDerived proofs\nZero-knowledge proofs")
+    Component(pexService, "PEx v2 Engine", "TypeScript + @sphereon", "Presentation Exchange v2\nConstraint evaluation\nFormat selection")
+}
+
+Container_Boundary(services2, "Business Logic - Management") {
+    Component(disclosureService, "Disclosure Service", "TypeScript", "Disclosure logic\nPrivacy calculation\nClaim selection")
+    Component(consentService, "Consent Service", "TypeScript", "Consent management\nRevocation\nExpiry handling")
+    Component(templateService, "Template Service", "TypeScript", "Presentation templates\nTemplate storage")
+    Component(activityService, "Activity Logger", "TypeScript", "Track presentations\nLog disclosed data")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(presentDB, "Presentation DB", "TypeORM/SQLite", "Presentation history\nDisclosed data log")
+    ComponentDb(consentDB, "Consent DB", "TypeORM/SQLite", "Consent preferences\nPer-verifier settings")
+    ComponentDb(templateDB, "Template DB", "TypeORM/SQLite", "Saved presentation\ntemplates")
+    ComponentDb(cacheDB, "Cache DB", "AsyncStorage", "PEx definitions\nPerformance cache")
+}
+
+System_Ext(verifier, "Verifier", "Requests presentation\nvia OID4VP or DIDComm")
+
+' UI to State
+Rel(disclosureUI, presentStore, "Select/deselect claims", "Redux")
+Rel(consentUI, consentStore, "Manage consent", "Redux")
+Rel(historyUI, presentStore, "View history", "Redux")
+
+' State to Services
+Rel(presentStore, sdJwtService, "Create SD-JWT presentation")
+Rel(presentStore, bbsService, "Create BBS+ derived proof")
+Rel(presentStore, pexService, "Evaluate PEx requirements")
+Rel(presentStore, disclosureService, "Calculate privacy impact")
+Rel(consentStore, consentService, "Check/grant consent")
+
+' Service interactions
+Rel(pexService, sdJwtService, "Uses for SD-JWT\npresentations")
+Rel(pexService, bbsService, "Uses for BBS+\npresentations")
+Rel(disclosureService, presentStore, "Update selection state")
+Rel(consentService, consentDB, "Store/retrieve consent")
+Rel(activityService, presentDB, "Log activities")
+
+' Services to Data
+Rel(sdJwtService, cacheDB, "Cache key pairs")
+Rel(bbsService, cacheDB, "Cache public keys")
+Rel(templateService, templateDB, "Store templates")
+Rel(activityService, presentDB, "Store activity log")
+
+' External interactions
+Rel(presentStore, verifier, "Submit presentation", "HTTPS/DIDComm")
+Rel(verifier, pexService, "Send PEx definition", "OID4VP")
+
+SHOW_LEGEND()
+
+note right of sdJwtService
+**SD-JWT Service (US-4.1):**
+• Parse SD-JWT structure
+• Create selective disclosures
+• Generate key binding JWT
+• Holder authentication
+• Nonce & audience handling
+• Verify disclosure hashes
+end note
+
+note right of bbsService
+**BBS+ Service (US-4.2):**
+• Verify BBS+ signatures
+• Generate derived proofs
+• Selective attribute disclosure
+• Predicate proofs (ZKP)
+  - age > 18
+  - income > X
+  - range proofs
+• Performance optimization
+end note
+
+note right of pexService
+**PEx v2 Engine (US-4.3):**
+• Parse Presentation Definition v2
+• Handle input descriptors
+• Evaluate constraints:
+  - Field existence
+  - JSON Schema validation
+  - Pattern matching
+  - Enum restrictions
+• Generate submission
+• Validate submission
+end note
+
+note right of disclosureService
+**Disclosure Service (US-4.4):**
+• Privacy impact calculation
+• Claim selection logic
+• Required vs optional claims
+• Visual indicators data
+• Preview generation
+end note
+
+note right of consentService
+**Consent Service (US-4.8):**
+• Per-verifier consent
+• Remember consent option
+• Consent revocation
+• Expiry management
+• Audit trail
+end note
+
+@enduml

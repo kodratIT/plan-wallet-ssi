@@ -1,232 +1,244 @@
-@startuml
+@startuml BBS-ZKP-Flow
+skinparam sequenceMessageAlign center
 title BBS+ Zero-Knowledge Proof Flow (US-4.2)
-caption Predicate Proof: Prove age > 18 without revealing exact age
 
-actor User
-participant "Wallet UI" as UI
-participant "BBS+\nService" as BBS
-participant "Predicate\nProof UI" as Predicate
-participant "Presentation\nService" as Present
-participant "Verifier" as Verifier
-database "Credential\nStore" as Store
+actor User as user
+participant "Wallet UI" as ui
+participant "BBS+ Service" as bbs
+participant "Predicate Proof UI" as predicate
+participant "Presentation Service" as present
+participant "Verifier" as verifier
+database "Credential Store" as store
 
 == Phase 1: Receive BBS+ Credential ==
-User -> UI: Accept credential offer
-UI -> BBS: parseBBSCredential(credential)
-activate BBS
 
-note right of BBS
-BBS+ Credential:
-{
-  "credentialSubject": {
-    "name": "John Doe",
-    "birthDate": "1990-05-15",
-    "address": "123 Main St",
-    "email": "john@example.com"
-  },
-  "proof": {
-    "type": "BbsBlsSignature2020",
-    "proofValue": "...",
-    "verificationMethod": "did:example:issuer#key-1"
-  }
-}
+user -> ui: Accept credential offer
+activate ui
+ui -> bbs: parseBBSCredential(credential)
+activate bbs
+
+note right of bbs
+  BBS+ Credential Structure:
+  - credentialSubject:
+    * name: "John Doe"
+    * birthDate: "1990-05-15"
+    * address: "123 Main St"
+    * email: "john@example.com"
+  
+  - proof:
+    * type: "BbsBlsSignature2020"
+    * proofValue: "..."
+    * verificationMethod: "did:example:issuer#key-1"
 end note
 
-BBS -> BBS: verifyBBSSignature()
-BBS -> BBS: validateCredentialStructure()
+bbs -> bbs: verifyBBSSignature()
+bbs -> bbs: validateCredentialStructure()
 
-BBS --> UI: Verified BBS+ credential
-deactivate BBS
+bbs --> ui: Verified BBS+ credential
+deactivate bbs
 
-UI -> Store: saveCredential(bbsCredential)
+ui -> store: saveCredential(bbsCredential)
+activate store
+store --> ui: saved
+deactivate store
+deactivate ui
 
 == Phase 2: Predicate Proof Request ==
-Verifier -> UI: Request predicate proof:\n"Prove age > 18"
-activate UI
 
-note right of Verifier
-Presentation Definition:
-{
-  "input_descriptors": [{
-    "constraints": {
-      "fields": [{
-        "path": ["$.credentialSubject.birthDate"],
-        "filter": {
-          "type": "string",
-          "format": "date",
-          "predicate": {
-            "type": "age_over",
-            "value": 18
-          }
-        }
-      }]
-    }
-  }]
-}
+verifier -> ui: Request: Prove age > 18
+activate ui
+
+note right of verifier
+  Presentation Definition:
+  - input_descriptors:
+    * constraints:
+      - fields:
+        + path: credentialSubject.birthDate
+        + filter:
+          - type: string
+          - format: date
+          - predicate:
+            * type: age_over
+            * value: 18
 end note
 
-UI -> Present: processPresentationRequest(request)
-activate Present
+ui -> present: processPresentationRequest(request)
+activate present
 
-Present -> Present: detectPredicateRequest()
-Present -> Store: findBBSCredentials()
-activate Store
-Store --> Present: BBS+ credentials with birthDate
-deactivate Store
+present -> present: detectPredicateRequest()
+present -> store: findBBSCredentials()
+activate store
+store --> present: BBS+ credentials with birthDate
+deactivate store
 
-Present --> UI: Predicate proof required: age > 18
-deactivate Present
+present --> ui: Predicate proof required: age > 18
+deactivate present
 
 == Phase 3: User Consent for Predicate ==
-UI -> Predicate: showPredicateProofUI(predicate: "age > 18")
-activate Predicate
 
-note right of Predicate
-Predicate Proof UI:
-╔═══════════════════════════╗
-║  Age Verification         ║
-║                           ║
-║  Verifier requests:       ║
-║  Prove you are over 18    ║
-║                           ║
-║  What will be shared:     ║
-║  ✓ Proof that age > 18    ║
-║                           ║
-║  What will NOT be shared: ║
-║  ✗ Your exact age         ║
-║  ✗ Your birth date        ║
-║                           ║
-║  Privacy: HIGH ★★★★★      ║
-╚═══════════════════════════╝
+ui -> predicate: showPredicateProofUI(age > 18)
+activate predicate
+
+note right of predicate
+  Age Verification Screen
+  
+  Verifier requests:
+  - Prove you are over 18
+  
+  What will be shared:
+  [X] Proof that age > 18
+  
+  What will NOT be shared:
+  [ ] Your exact age
+  [ ] Your birth date
+  
+  Privacy Level: HIGH (5/5)
 end note
 
-Predicate --> User: Explain predicate proof
-User -> Predicate: ℹ️ "How does this work?"
+predicate -> user: Display predicate explanation
+activate user
 
-Predicate --> User: "Zero-Knowledge Proof:\n\
-• Cryptographic proof that you are over 18\n\
-• Verifier sees: TRUE (age > 18)\n\
-• Verifier does NOT see: your actual age\n\
-• Uses BBS+ signature technology"
+user -> predicate: How does this work?
 
-User -> Predicate: ✓ Approve predicate proof
-Predicate --> UI: User approved
-deactivate Predicate
+predicate -> user: Show ZKP explanation
+note left of user
+  Zero-Knowledge Proof:
+  
+  - Cryptographic proof that
+    you are over 18
+  
+  - Verifier sees: 
+    TRUE (age > 18)
+  
+  - Verifier does NOT see:
+    Your actual age
+  
+  - Uses BBS+ signature
+    technology
+end note
+
+user -> predicate: Approve predicate proof
+deactivate user
+
+predicate --> ui: User approved
+deactivate predicate
 
 == Phase 4: Generate Derived Proof ==
-UI -> BBS: generateDerivedProof(credential, predicate, nonce)
-activate BBS
 
-BBS -> BBS: calculateAge(birthDate)
+ui -> bbs: generateDerivedProof(cred, predicate, nonce)
+activate bbs
 
-note right of BBS
-Calculate age from birth date:
-birthDate: 1990-05-15
-today: 2024-10-15
-age: 34 years
+bbs -> bbs: calculateAge(birthDate)
 
-Predicate: age > 18
-Result: TRUE ✓
+note right of bbs
+  Calculate age from birth date:
+  - birthDate: 1990-05-15
+  - today: 2024-10-15
+  - calculated age: 34 years
+  
+  Evaluate predicate:
+  - age > 18
+  - result: TRUE
 end note
 
-BBS -> BBS: evaluatePredicate(age, ">", 18)
-BBS -> BBS: createRevealedStatements()
+bbs -> bbs: evaluatePredicate(age, ">", 18)
+bbs -> bbs: createRevealedStatements()
 
-note right of BBS
-Revealed Statements:
-• name: "John Doe" (revealed)
-• birthDate: [HIDDEN] (not revealed)
-• predicate_age_over_18: TRUE (proven)
-
-All other fields: [HIDDEN]
+note right of bbs
+  Revealed Statements:
+  
+  Revealed:
+  - name: "John Doe"
+  - predicate_age_over_18: TRUE
+  
+  Hidden:
+  - birthDate: [HIDDEN]
+  - address: [HIDDEN]
+  - email: [HIDDEN]
 end note
 
-BBS -> BBS: generateDerivedProof({
-  revealedAttributes: ["name"],
-  predicates: [{
-    field: "birthDate",
-    type: "age_over",
-    value: 18,
-    result: true
-  }],
-  nonce: nonce
-})
+bbs -> bbs: generateDerivedProof()
 
-note right of BBS
-BBS+ Derived Proof Process:
-1. Blind unrevealed attributes
-2. Generate predicate proof
-3. Create new signature
-4. Bind to holder & verifier
-5. Add nonce for freshness
-
-Output: Cryptographic proof
-without revealing exact values
+note right of bbs
+  BBS+ Derived Proof Process:
+  1. Blind unrevealed attributes
+  2. Generate predicate proof
+  3. Create new signature
+  4. Bind to holder & verifier
+  5. Add nonce for freshness
+  
+  Output: Cryptographic proof
+  without revealing exact values
 end note
 
-BBS --> UI: Derived proof with predicate
-deactivate BBS
+bbs --> ui: Derived proof with predicate
+deactivate bbs
 
 == Phase 5: Submit Zero-Knowledge Proof ==
-UI -> Present: submitPresentation(derivedProof, verifier)
-activate Present
 
-Present -> Verifier: POST /presentation\n+ BBS+ Derived Proof
-activate Verifier
+ui -> present: submitPresentation(proof, verifier)
+activate present
 
-Verifier -> Verifier: verifyDerivedProof()
-Verifier -> Verifier: verifyIssuerPublicKey()
-Verifier -> Verifier: validatePredicateProof()
+present -> verifier: POST /presentation + BBS+ Proof
+activate verifier
 
-note right of Verifier
-Verifier validates:
-1. Issuer signature (via public key)
-2. Proof structure
-3. Nonce freshness
-4. Predicate result: age > 18 = TRUE
+verifier -> verifier: verifyDerivedProof()
+verifier -> verifier: verifyIssuerPublicKey()
+verifier -> verifier: validatePredicateProof()
 
-Verifier receives:
-✓ name: "John Doe"
-✓ age_over_18: TRUE
-
-Verifier does NOT receive:
-✗ birth date
-✗ exact age
-✗ other attributes
+note right of verifier
+  Verifier validates:
+  1. Issuer signature (via public key)
+  2. Proof structure
+  3. Nonce freshness
+  4. Predicate result: age > 18 = TRUE
+  
+  Verifier receives:
+  - name: "John Doe"
+  - age_over_18: TRUE
+  
+  Verifier does NOT receive:
+  - birth date
+  - exact age
+  - other attributes
 end note
 
-Verifier --> Present: ✅ "User verified as 18+"
-deactivate Verifier
+verifier --> present: User verified as 18+
+deactivate verifier
 
-Present --> UI: Verification successful
-deactivate Present
+present --> ui: Verification successful
+deactivate present
 
 == Phase 6: Log Activity ==
-UI -> Store: logPresentationActivity({
-  credentialId,
-  verifier,
-  type: "predicate_proof",
-  predicate: "age > 18",
-  revealed: ["name"],
-  hidden: ["birthDate", "address", "email"],
-  timestamp
-})
-activate Store
-Store --> UI: logged
-deactivate Store
 
-UI --> User: ✅ "Age verified!\n\nVerifier confirmed:\n• You are over 18\n\
-\nYour privacy protected:\n• Exact age NOT shared\n• Birth date NOT shared"
+ui -> store: logPresentationActivity(data)
+activate store
+store --> ui: logged
+deactivate store
 
-deactivate UI
+ui -> user: Age verified successfully
+activate user
+note left of user
+  Age verified!
+  
+  Verifier confirmed:
+  - You are over 18
+  
+  Your privacy protected:
+  - Exact age NOT shared
+  - Birth date NOT shared
+end note
+deactivate user
 
-note over User, Verifier
-**Zero-Knowledge Proof Benefits:**
-✓ Privacy: Exact values hidden
-✓ Selective: Choose what to prove
-✓ Trustless: Cryptographically verified
-✓ Unlinkable: Different proofs each time
-✓ Minimal disclosure: Only prove what's needed
+deactivate ui
+
+note over user, verifier
+  Zero-Knowledge Proof Benefits:
+  - Privacy: Exact values hidden
+  - Selective: Choose what to prove
+  - Trustless: Cryptographically verified
+  - Unlinkable: Different proofs each time
+  - Minimal disclosure: Only prove what's needed
 end note
 
 @enduml
